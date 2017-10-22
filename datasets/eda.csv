@@ -1,7 +1,7 @@
-numerical_a,numerical_b,numerical_c,numerical_d,nominal_color,ordinal_size,numerical_price,classlabel
-1,2,3,4,green,M,10.1,class1
-5,6,,8,red,L,13.5,class2
-10,11,12,,blue,XL,15.3,class1
-,14,13,13,blue,L,13.8,class1
-15,17,,19,yellow,S,9.1,class2
-21,24,20,23,green,XXL,18.1,class3
+numerical_a,numerical_b,numerical_c,numerical_d,nominal_color,ordinal_size,numerical_price,datetime,complex,classlabel
+1,2,3,4,green,M,10.1,1/10/2017,7+3j,class1
+5,6,,8,red,L,13.5,4/10/2017,1+6j,class2
+10,11,12,,blue,XL,15.3,5/10/2017,5+1j,class1
+,14,13,13,blue,L,13.8,6/10/2017,5+4j,class1
+15,17,,19,yellow,S,9.1,7/10/2017,9+3j,class2
+21,24,20,23,green,XXL,18.1,8/10/2017,4+1j,class3
