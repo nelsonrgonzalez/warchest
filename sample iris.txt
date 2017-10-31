@@ -1,0 +1,82 @@
+Results: Perceptron Classifier
+-----------------------------------------
+Misclassified samples: 4
+Misclassified error: 0.09
+Accuracy: 0.91111
+
+Training accuracy: 0.90476
+Test accuracy: 0.91111
+
+Results: Adaline GD Classifier
+-----------------------------------------
+Misclassified samples: 27
+Misclassified error: 0.60
+Accuracy: 0.40000
+
+Training accuracy: 0.30476
+Test accuracy: 0.40000
+
+Results: Adaline SGD Classifier
+-----------------------------------------
+Misclassified samples: 27
+Misclassified error: 0.60
+Accuracy: 0.40000
+
+Training accuracy: 0.30476
+Test accuracy: 0.40000
+
+Results: Logistic Regression Classifier
+-----------------------------------------
+Misclassified samples: 1
+Misclassified error: 0.02
+Accuracy: 0.97778
+
+Training accuracy: 0.96190
+Test accuracy: 0.97778
+
+Results: Linear Support Vector Machines Classifier
+-----------------------------------------
+Misclassified samples: 1
+Misclassified error: 0.02
+Accuracy: 0.97778
+
+Training accuracy: 0.95238
+Test accuracy: 0.97778
+
+Results: Kernel Support Vector Machines Classifier
+-----------------------------------------
+Misclassified samples: 1
+Misclassified error: 0.02
+Accuracy: 0.97778
+
+Training accuracy: 0.95238
+Test accuracy: 0.97778
+
+Results: Decision Tree Classifier
+-----------------------------------------
+Misclassified samples: 1
+Misclassified error: 0.02
+Accuracy: 0.97778
+
+Training accuracy: 0.98095
+Test accuracy: 0.97778
+Possible overfitting.
+
+Results: Random Forest Classifier
+-----------------------------------------
+Misclassified samples: 2
+Misclassified error: 0.04
+Accuracy: 0.95556
+
+Training accuracy: 0.99048
+Test accuracy: 0.95556
+Possible overfitting.
+
+Results: K-nearest Neighbors Classifier
+-----------------------------------------
+Misclassified samples: 0
+Misclassified error: 0.00
+Accuracy: 1.00000
+
+Training accuracy: 0.95238
+Test accuracy: 1.00000

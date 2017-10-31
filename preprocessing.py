@@ -3,7 +3,6 @@ import numpy as np
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.preprocessing import StandardScaler
 from sklearn.preprocessing import LabelEncoder
-from load_datasets import LoadDataset
 
 
 def Scale(X_train, X_test, t="std"):
@@ -36,7 +35,6 @@ def Scale(X_train, X_test, t="std"):
 
     else:
         print("Incorrect type parameter")
-
 
 
 def EncodeClassLabel(column):
@@ -100,7 +98,7 @@ def ReverseMapOrdinalFeature(column, mapping):
     return column.map(inv_mapping)
 
 
-def HandleMissingData(df):
+def handle_missing_data(df):
 
     # Check whether Dataframe has missing values
     if (df.isnull().values.any() is True):
