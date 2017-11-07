@@ -1,3 +1,22 @@
+"""
+    Warchest: Data management and automation GUI for Machine Learning projects
+    Created September 2017
+    Copyright (C) Nelson R Gonzalez
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+"""
+
 import pandas as pd
 from utils_and_tools import WriteToConsole
 
@@ -21,42 +40,3 @@ def DownloadDataset(object):
         WriteToConsole('\nDownload complete.')
 
     return None
-
-#DownloadDataset('wine')
-
-
-
-  # conditional flow uses if, elif, else
-#  if(x < y):
-#    st= "x is less than y"
-#  elif (x == y):
-#    st= "x is same as y"
-#  else:
-#    st= "x is greater than y"
-#  print st
-
-#class DownloadDataset(object):
-#    def __init__(self, dataset):
-#        self.dataset = dataset
-#
-#        if (self.dataset == "IRIS"):
-#            sys.stdout.write('\rDownloading %s Dataset:' % (self.dataset))
-#            sys.stdout.flush()
-#            df = pd.read_csv('https://archive.ics.uci.edu/ml/'
-#                             'machine-learning-databases/iris/iris.data', header=None)
-#            df.to_csv('./datasets/iris.csv', index=False, encoding = "utf-8")
-
-#   def GetDataset(self, X, y):
-#    class anotherClass(myClass):
-#  def method2(self):
-#    print "anotherClass method2"
-#
-#  def method1(self):
-#    myClass.method1(self);
-#    print "anotherClass method1"
-#
-#  def method1(self):
-#    print "myClass method1"
-#
-#  def method2(self, someString):
-#    print "myClass method2: " + someString

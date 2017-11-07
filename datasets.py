@@ -1,3 +1,22 @@
+"""
+    Warchest: Data management and automation GUI for Machine Learning projects
+    Created September 2017
+    Copyright (C) Nelson R Gonzalez
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+"""
+
 from toolbox import exec_qry, exec_insert_qry
 import tkinter as tk
 from tkinter import ttk
@@ -26,7 +45,6 @@ class Dataset(tk.Toplevel):
                                        parent.winfo_rooty()+50))
 
         self.default_dataset = self.get_default_dataset()
-        #self.available_datasets = []
         self.select_area_var = tk.IntVar()
         self.select_area_var.set(1)
 
@@ -99,7 +117,6 @@ class Dataset(tk.Toplevel):
                      name="default_dataset_entry")
         self.default_dataset_entry.grid(row=2, column=1, sticky="nsew",
                                              padx=1, pady=1)
-        #self.add_tooltip_to_widget(self.selected_column_name_entry)
         self.default_dataset_entry.delete(0, tk.END)
         self.default_dataset_entry.insert(0, self.default_dataset)
         self.default_dataset_entry.configure(state='readonly')
@@ -136,27 +153,6 @@ class Dataset(tk.Toplevel):
                                              padx=1, pady=1)
         self.update_available_datasets_listbox()
         self.available_dataset_listbox.configure(state='disabled')
-#        directory_path = filedialog.askdirectory()
-
-#        self.list_box.delete(0, tk.END)
-#        self.list_box.curselection()[0]
-#        int(self.list_box.curselection()[0])
-
-#            def add_audio_file(self):
-#        audio_file = tkinter.filedialog.askopenfilename(filetypes=[(
-#            'All supported', '.mp3 .wav'), ('.mp3 files', '.mp3'), ('.wav files', '.wav')])
-#        if audio_file:
-#            self.model.add_to_play_list(audio_file)
-#            file_path, file_name = os.path.split(audio_file)
-#            self.list_box.insert(tk.END, file_name)
-
-
-#        self.list_box = tk.Listbox(frame, activestyle='none', cursor='hand2',
-#                                   bg='#1C3D7D', fg='#A0B9E9', height=10)
-#        self.list_box.pack(side=tk.LEFT, fill=tk.BOTH, expand=1)
-#        self.list_box.bind(
-#            "<Double-Button-1>", self.on_play_list_double_clicked)
-
         self.available_dataset_scrollbar = \
             ttk.Scrollbar(self.select_area_frame, orient=tk.VERTICAL,
                           command=self.available_dataset_listbox.yview)
@@ -212,9 +208,6 @@ class Dataset(tk.Toplevel):
                      name="browse_local_dataset_entry")
         self.browse_local_dataset_entry.grid(row=2, column=0, sticky="nsew",
                                              columnspan=2, padx=1, pady=1)
-        #self.add_tooltip_to_widget(self.selected_column_name_entry)
-#        self.browse_dataset_entry.delete(0, tk.END)
-#        self.browse_dataset_entry.insert(0, self.default_dataset)
         self.browse_local_dataset_entry.configure(state='readonly')
 
         self.browse_local_dataset_button = \
@@ -270,9 +263,6 @@ class Dataset(tk.Toplevel):
                      name="choose_default_dataset_entry")
         self.choose_default_dataset_entry.grid(row=2, column=0, sticky="nsew",
                                                columnspan=2, padx=1, pady=1)
-        #self.add_tooltip_to_widget(self.selected_column_name_entry)
-#        self.browse_dataset_entry.delete(0, tk.END)
-#        self.browse_dataset_entry.insert(0, self.default_dataset)
         self.choose_default_dataset_entry.configure(state='readonly')
 
         self.choose_default_dataset_button = \
@@ -296,8 +286,6 @@ class Dataset(tk.Toplevel):
     def on_select_area_toggle_clicked(self):
 
         if self.select_area_var.get() == 1:
-            #self.default_dataset_entry.configure(state='normal')
-
             self.available_dataset_listbox.configure(state='disabled')
             self.available_dataset_listbox.configure(background='grey95')
 
@@ -336,96 +324,6 @@ class Dataset(tk.Toplevel):
                     files_in_dir.append(file)
         for file in files_in_dir:
             self.available_dataset_listbox.insert(tk.END, file)
-
-#        self.mapping_tree_scrollbar = \
-#            ttk.Scrollbar(self, orient=tk.VERTICAL,
-#                          command=self.mapping_tree.yview)
-#        self.mapping_tree_scrollbar.grid(row=0, column=1, rowspan=3,
-#                                         sticky='ns')
-#        self.mapping_tree.configure(yscrollcommand=self.
-#                                    mapping_tree_scrollbar.set)
-
-#        items = self.mapping_tree.get_children()
-#        for item in items:
-#            self.mapping_tree.delete(item)
-#        qry = 'SELECT * FROM OrdinalMaps ORDER BY IsActive'
-#        mappings = exec_qry(qry)
-#        for row in mappings:
-#            self.mapping_tree.insert('', 0, text=row[1], values=row[2])
-
-#
-#            if messagebox.askyesno("Selection", "Do you want to use the " +
-#                                   "current column's categorical values?"):
-
-
-#        try:
-#            self.mapping_tree.item(self.mapping_tree.selection())['values'][0]
-#        except IndexError as e:
-#            messagebox.showwarning("Warning", "No mapping was selected.")
-#            return
-
-
-#            qry = 'UPDATE OrdinalMaps SET IsActive=?'
-#            parameters = ("No",)
-#            exec_qry(qry, parameters)
-#
-#            qry = 'UPDATE OrdinalMaps SET IsActive=? WHERE OrdinalMapID=?'
-#            parameters = ("Yes", ordinal_map_id)
-#            exec_qry(qry, parameters)
-
-
-#    def get_ordinal_map_id(self, ordinal_mapping_str):
-#
-#        where_column1 = 'OrdinalMapping'
-#
-#        qry = "SELECT OrdinalMapID FROM OrdinalMaps WHERE {cond}=?".\
-#            format(cond=where_column1)
-#        parameters = (ordinal_mapping_str,)
-#
-#        cursor = exec_qry(qry, parameters)
-#
-#        for row in cursor:
-#            return row[0]
-
-#    def delete_mapping(self):
-#
-#        if messagebox.askyesno("Warning", "Do you want to delete the " +
-#                               "selected mapping?"):
-#
-#            ordinal_map_id = self. \
-#                get_ordinal_map_id(self.mapping_tree.
-#                                   item(self.mapping_tree.selection())['text'])
-#            qry = 'DELETE FROM OrdinalMaps WHERE OrdinalMapID=?'
-#            parameters = (ordinal_map_id,)
-#            exec_qry(qry, parameters)
-#            self.view_mappings()
-
-
-#        self.key_entry = [None] * len(self.ordinal_mapping_list)
-#
-#        for widget in frame.winfo_children():
-#            widget.destroy()
-
-#            self.value_entry[i] = tk.Entry(frame,
-#                                           relief='flat',
-#                                           highlightbackground='black',
-#                                           highlightthickness=1,
-#                                           highlightcolor='black',
-#                                           name='value'+str(i),
-#                                           width=10)
-#            self.value_entry[i].grid(row=i, column=2, padx=0, pady=0)
-#            self.value_entry[i].delete(0, tk.END)
-#            self.value_entry[i].insert(0, value)
-#            self.value_entry[i].name = 'value'+str(i)
-#
-
-
-
-
-
-
-
-
 
     def exit_window(self):
 

@@ -1,3 +1,22 @@
+"""
+    Warchest: Data management and automation GUI for Machine Learning projects
+    Created September 2017
+    Copyright (C) Nelson R Gonzalez
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+"""
+
 from toolbox import exec_qry, is_float_series_integer, is_integer_series_natural
 from datetime import datetime
 from global_config import g
@@ -33,9 +52,6 @@ class ColumnInsight():
             column_tab_dict['deep_memusage_of_col_with_index_entry'][0]
         self.getsizeof_col_entry = self. \
             column_tab_dict['getsizeof_col_entry'][0]
-
-        #print(self.column_tab_dict)
-
 
     def get_insights(self):
 
@@ -171,22 +187,3 @@ class ColumnInsight():
                       insight_priority, datetime.now(), language_id)
 
         return exec_qry(qry, parameters)
-
-#    def quack(self):
-#        print('Quaaack!', self.variables)
-#
-#    def walk(self):
-#        print('Walks like a duck.', self.variables)
-#
-#    def set_variable(self, k, v):
-#        self.variables[k] = v
-#
-#    def get_variable(self, k):
-#        return self.variables.get(k, None)
-
-
-#    def main():
-#    donald = Duck(feet = 2)
-#    donald.set_variable("color", "blue")
-#    print(donald.get_variable("feet"))
-#    print(donald.get_variable("color"))
