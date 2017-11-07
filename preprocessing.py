@@ -1,3 +1,22 @@
+"""
+    Warchest: Data management and automation GUI for Machine Learning projects
+    Created September 2017
+    Copyright (C) Nelson R Gonzalez
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+"""
+
 import pandas as pd
 import numpy as np
 from sklearn.preprocessing import MinMaxScaler
@@ -39,8 +58,6 @@ def Scale(X_train, X_test, t="std"):
 
 def EncodeClassLabel(column):
     """ Encode class label """
-    # df['classlabel'] = EncodeClassLabel(df['classlabel'])
-
     # Instantiate object
     le = LabelEncoder()
     # Return fitted and transformed object
@@ -103,20 +120,3 @@ def handle_missing_data(df):
     # Check whether Dataframe has missing values
     if (df.isnull().values.any() is True):
         pass
-
-#from sklearn.preprocessing import Imputer
-#
-#imr = Imputer(missing_values='NaN', strategy='mean', axis=0)
-#imr = imr.fit(df)
-#imputed_data = imr.transform(df.values)
-#imputed_data
-
-
-# conditional flow uses if, elif, else
-#  if(x < y):
-#    st= "x is less than y"
-#  elif (x == y):
-#    st= "x is same as y"
-#  else:
-#    st= "x is greater than y"
-#  print st
