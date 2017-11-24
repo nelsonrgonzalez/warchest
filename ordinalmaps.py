@@ -1,4 +1,23 @@
-from toolbox import exec_qry, exec_insert_qry, sorted_by_second_item
+"""
+    Warchest: Data management and automation GUI for Machine Learning projects
+    Created September 2017
+    Copyright (C) Nelson R Gonzalez
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+"""
+
+from toolbox import exec_qry, exec_insert_qry, sorted_by_second_item, is_even
 import tkinter as tk
 from tkinter import ttk
 from tkinter import messagebox
@@ -30,6 +49,7 @@ class OrdinalMapping(tk.Toplevel):
         self.ordinal_map_id = 0
 
         self.create_gui()
+        self.focus_set()
         self.grab_set()
 
     def create_gui(self):
@@ -44,6 +64,12 @@ class OrdinalMapping(tk.Toplevel):
         self.mapping_tree.column(2, width=50)
         self.mapping_tree.heading('#0', text='Mapping', anchor=tk.W)
         self.mapping_tree.heading(2, text='Active', anchor=tk.W)
+
+        self.mapping_tree.tag_configure('odd_row', background='white')
+        self.mapping_tree.tag_configure('even_row', background='grey90')
+
+        self.mapping_tree.bind("<Double-Button-1>",
+                               self.handle_double_click)
 
         self.mapping_tree_scrollbar = \
             ttk.Scrollbar(self, orient=tk.VERTICAL,
@@ -143,8 +169,13 @@ class OrdinalMapping(tk.Toplevel):
             self.mapping_tree.delete(item)
         qry = 'SELECT * FROM OrdinalMaps ORDER BY IsActive'
         mappings = exec_qry(qry)
-        for row in mappings:
-            self.mapping_tree.insert('', 0, text=row[1], values=row[2])
+        for i, row in enumerate(mappings):
+            if is_even(i):
+                self.mapping_tree.insert('', 0, text=row[1], values=row[2],
+                                         tags=('even_row',))
+            else:
+                self.mapping_tree.insert('', 0, text=row[1], values=row[2],
+                                         tags=('odd_row',))
 
     def get_ordinal_map_id(self, ordinal_mapping_str):
 
@@ -281,6 +312,7 @@ class OrdinalMapping(tk.Toplevel):
         self.aw_delete_last_line_button.grid(row=2, column=0, sticky="nsew",
                                              padx=5, pady=1)
 
+        self.add_window.focus_set()
         self.add_window.grab_set()
         self.add_window.mainloop()
 
@@ -357,6 +389,7 @@ class OrdinalMapping(tk.Toplevel):
         self.mw_delete_last_line_button.grid(row=2, column=0, sticky="nsew",
                                              padx=5, pady=1)
 
+        self.modify_window.focus_set()
         self.modify_window.grab_set()
         self.modify_window.mainloop()
 
@@ -554,6 +587,11 @@ class OrdinalMapping(tk.Toplevel):
         for row in cursor:
             lst.append(row[0])
         return len(lst)
+
+    def handle_double_click(self, event):
+
+        self.on_modify_mapping_button_clicked()
+        return
 
     def exit_window(self):
 
