@@ -1,23 +1,57 @@
-#from load_datasets import load_dataset
-from toolbox import write_to_console
+"""
+    Warchest: Data management and automation GUI for Machine Learning projects
+    Created September 2017
+    Copyright (C) Nelson R Gonzalez
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+"""
+
+# from load_datasets import load_dataset
+from toolbox import write_to_console, is_even, exec_qry
 import numpy as np
 import pandas as pd
 import os.path
 import sqlite3
+import pickle
+from threading import Thread
+from queue import Queue
+import time
 from sklearn.model_selection import train_test_split
 from preprocessing import EncodeClassLabel, Scale
 from insights import ColumnInsight
 from ordinalmaps import OrdinalMapping
 from datasets import Dataset
+from sessions import Session
+from transformations import Transformation
+from modeloptions import ModelOption
 from automator import Automator
 from global_config import g
 import tkinter as tk
 from tkinter import ttk
-from tkinter import messagebox
+from tkinter import messagebox, filedialog
 import Pmw
-from pandastablerev import Table
+# from pandastablerev import Table
+from wcpandastable.core import Table
 
 APP_NAME = "Warchest"
+CELL_CLR_NORMAL = '#FFFFFF'  # White
+CELL_CLR_CLS_LBL = '#FFFF00'  # Yellow
+CELL_CLR_MODEL_NUMERICAL = '#00FFFF'  # Cyan
+CELL_CLR_MODEL_DATETIME = '#F5DEB3'  # Wheat
+CELL_CLR_MODEL_BOOLEAN = '#EE82EE'  # Violet
+CELL_CLR_MODEL_NOMINAL = '#ADD8E6'  # LightBlue
+CELL_CLR_MODEL_ORDINAL = '#00BFFF'  # DeepSkyBlue
 
 
 class Warchest():
@@ -32,16 +66,25 @@ class Warchest():
         self.set_app_size()
         self.setup_app_styles()
 
-        #top area variables
+        self.session_id = 0
+        # top area variables
         self.selected_column = 0
         self.selected_column_name = ''
         self.column_tab_dict = {}
+        self.available_to_model = {}
+        self.class_label_status = {}
+        self.nominal_ordinal = {}
+        self.available_to_model_final = {}
+        self.model_columns = {}
 
         self.selected_dataset = ''
+
+        self.transformations_log_list = []
 
         # absolute path of application py file
         self.absolute_path = os.path.dirname(os.path.abspath(__file__))
         self.datasets_path = os.path.join(self.absolute_path, 'datasets')
+        self.trans_path = os.path.join(self.absolute_path, 'transformations')
         #print(self.absolute_path)
         #print(os.path.join(self.absolute_path, self.db_filename))
 #        print(os.path.abspath(__file__))
@@ -57,6 +100,7 @@ class Warchest():
 
     def setup_app_styles(self):
 
+        #import tkinter.font
 #        print(self.column_tab.winfo_class())
 #        self.tabs_style.configure('TNotebook', background='white')
         self.app_style = ttk.Style()
@@ -66,6 +110,9 @@ class Warchest():
                                  font=('Arial', '8', 'bold'),
                                  foreground='grey25')
 
+
+        #print(type(self.app_style.lookup('TEntry', 'font')))
+        #print(tkinter.font.families())
         #print(self.app_style.element_options('Treeview.Heading'))
         #self.app_style.configure('Tabs.TEntry', background='white')
         #self.app_style.map('Tabs.TEntry', background = [('readonly', 'white')])
@@ -88,6 +135,7 @@ class Warchest():
 
         self.menu_bar = tk.Menu(self.root)
 
+        # dataset_menu
         self.dataset_menu = tk.Menu(self.menu_bar, tearoff=0,
                                     activebackground="#A2A2A2",
                                     activeforeground="black")
@@ -97,6 +145,8 @@ class Warchest():
         self.dataset_menu.add_command(
             label="Load Dataset", command=self.on_load_dataset_menu_clicked)
         self.dataset_menu.add_command(
+            label="Run Dataset (OLD)", command=self.on_run_dataset_menu_old_clicked)
+        self.dataset_menu.add_command(
             label="Run Dataset", command=self.on_run_dataset_menu_clicked)
 #        self.file_menu.add_command(
 #            label="Save Project", command=self.save_project)
@@ -104,6 +154,48 @@ class Warchest():
         self.dataset_menu.add_command(label="Exit", command=self.exit_app)
         self.menu_bar.add_cascade(label="Datasets", menu=self.dataset_menu)
 
+        # transformations_menu
+        self.transformations_menu = tk.Menu(self.menu_bar, tearoff=0,
+                                            activebackground="#A2A2A2",
+                                            activeforeground="black")
+        self.transformations_menu.add_command(
+                label="Toggle Selected",
+                command=self.on_toggle_selected_transformations_menu_clicked)
+        self.transformations_menu.add_command(
+                label="Flag All",
+                command=self.on_flag_all_transformations_menu_clicked)
+        self.transformations_menu.add_command(
+                label="Unflag All",
+                command=self.on_unflag_all_transformations_menu_clicked)
+        self.transformations_menu.add_separator()
+        self.transformations_menu.add_command(
+                label="Replicate Selected",
+                command=self.
+                on_replicate_selected_transformations_menu_clicked)
+        self.transformations_menu.add_command(
+                label="Replicate All",
+                command=self.on_replicate_all_transformations_menu_clicked)
+        self.transformations_menu.add_separator()
+        self.transformations_menu.add_command(
+                label="Load Transformations",
+                command=self.on_load_transformations_menu_clicked)
+        self.transformations_menu.add_command(
+                label="Save Transformations",
+                command=self.on_save_transformations_menu_clicked)
+        self.menu_bar.add_cascade(label="Transformations",
+                                  menu=self.transformations_menu)
+
+        # tools_menu
+        self.tools_menu = tk.Menu(self.menu_bar, tearoff=0,
+                                  activebackground="#A2A2A2",
+                                  activeforeground="black")
+        self.tools_menu.add_command(
+                label="Ordinal Mappings",
+                command=self.on_ordinal_mappings_menu_clicked)
+        self.menu_bar.add_cascade(label="Tools",
+                                  menu=self.tools_menu)
+
+        # about_menu
         self.about_menu = tk.Menu(self.menu_bar, tearoff=0,
                                   activebackground="#A2A2A2",
                                   activeforeground="black")
@@ -117,6 +209,20 @@ class Warchest():
         self.top_area = tk.Frame(self.root, height=25, bg="white")
         self.top_area.pack(fill='both', expand=1)
 
+    def create_dataframe_area(self):
+
+        self.dataframe_area = tk.Frame(self.root, bg="white")
+        self.dataframe_area.pack(fill='both', expand=1)
+#        self.dataframe_area = tk.Canvas(self.root, bg='white', relief='groove',
+#                                        width = 640, height = 480,
+#                                        scrollregion=(0,0,640,480))
+#        self.dataframe_area.grid(row=0, column=0, sticky="nsew", padx=1, pady=1)
+#        self.dataframe_area.bind('<1>', self.on_dataframe_area_click)
+        #self.dataframe_area.config(width = 640, height = 480)
+        #ttk.Button(self.dataframe_area, text='Click Me').grid()
+#        vb = self.root.geometry()
+#        print(vb)
+
     def create_tabs(self):
 
         self.tabs = ttk.Notebook(self.top_area)
@@ -125,22 +231,33 @@ class Warchest():
         self.column_tab = ttk.Frame(self.tabs)
         self.table_tab = ttk.Frame(self.tabs)
         self.insights_tab = ttk.Frame(self.tabs)
-        self.transformations_tab = ttk.Frame(self.tabs)
+        self.transformations_log_tab = ttk.Frame(self.tabs)
         self.tabs.add(self.column_tab, text='Column')
         self.tabs.add(self.table_tab, text='Table')
         self.tabs.add(self.insights_tab, text='Insights')
-        self.tabs.add(self.transformations_tab, text='Transformations')
+        self.tabs.add(self.transformations_log_tab, text='Transformations Log')
 
         self.column_tab.configure(style='Tabs.TFrame')
         self.table_tab.configure(style='Tabs.TFrame')
         self.insights_tab.configure(style='Tabs.TFrame')
-        self.transformations_tab.configure(style='Tabs.TFrame')
+        self.transformations_log_tab.configure(style='Tabs.TFrame')
+
+        def on_tab_change(event):
+
+            if self.tabs.index(self.tabs.select()) == 3:
+                if self.session_id > 0:
+                    self.update_transformations_log_tab_widgets()
+
+            if self.tabs.index(self.tabs.select()) == 1:
+                self.update_table_tab_widgets()
+
+        self.tabs.bind("<<NotebookTabChanged>>", on_tab_change)
 
     def clean_top_area_items(self):
 
         # print(self.tabs.winfo_exists())
 
-        self.reset_db_fields()
+#        self.reset_db_fields()
 
         if hasattr(self, 'tabs'):
             self.tabs.destroy()
@@ -151,19 +268,19 @@ class Warchest():
         self.create_column_tab_widgets()
         self.create_table_tab_widgets()
         self.create_insights_tab_widgets()
-        self.create_transformations_tab_widgets()
+        self.create_transformations_log_tab_widgets()
 
     def create_column_tab_widgets(self):
 
         # describe_column_button
-        self.describe_column_button = \
-            ttk.Button(self.column_tab,
-                       text="Describe Column",
-                       name="describe_column_button",
-                       command=self.on_describe_column_button_clicked)
-        self.describe_column_button.grid(row=0, column=0, sticky="nsew",
-                                         padx=1, pady=1)
-        self.add_tooltip_to_widget(self.describe_column_button)
+#        self.describe_column_button = \
+#            ttk.Button(self.column_tab,
+#                       text="Describe Column",
+#                       name="describe_column_button",
+#                       command=self.on_describe_column_button_clicked)
+#        self.describe_column_button.grid(row=0, column=0, sticky="nsew",
+#                                         padx=1, pady=1)
+#        self.add_tooltip_to_widget(self.describe_column_button)
 
         # analyze_column_button
         self.analyze_column_button = \
@@ -171,19 +288,39 @@ class Warchest():
                        text="Analyze Column",
                        name="analyze_column_button",
                        command=self.on_analyze_column_button_clicked)
-        self.analyze_column_button.grid(row=0, column=1, sticky="nsew",
+        self.analyze_column_button.grid(row=0, column=0, sticky="nsew",
                                          padx=1, pady=1)
         self.add_tooltip_to_widget(self.analyze_column_button)
 
-        # ordinal_mapping_button
-        self.ordinal_mapping_button = \
+        # toggle_model_availability_button
+        self.toggle_model_availability_button = \
             ttk.Button(self.column_tab,
-                       text="Ordinal Mapping",
-                       name="ordinal_mapping_button",
-                       command=self.on_ordinal_mapping_button_clicked)
-        self.ordinal_mapping_button.grid(row=0, column=2, sticky="nsew",
+                       text="Flg Model Available",
+                       name="toggle_model_availability_button",
+                       command=self.on_toggle_model_availability_button_clicked)
+        self.toggle_model_availability_button.grid(row=0, column=1, sticky="nsew",
                                          padx=1, pady=1)
-        self.add_tooltip_to_widget(self.ordinal_mapping_button)
+        #self.add_tooltip_to_widget(self.toggle_model_availability_button)
+
+        # toggle_class_label_status_button
+        self.toggle_class_label_status_button = \
+            ttk.Button(self.column_tab,
+                       text="Flg Class Label",
+                       name="toggle_class_label_status_button",
+                       command=self.on_toggle_class_label_status_button_clicked)
+        self.toggle_class_label_status_button.grid(row=0, column=2, sticky="nsew",
+                                         padx=1, pady=1)
+        #self.add_tooltip_to_widget(self.toggle_class_label_status_button)
+
+        # toggle_nominal_ordinal_button
+        self.toggle_nominal_ordinal_button = \
+            ttk.Button(self.column_tab,
+                       text="Nominal/Ordinal",
+                       name="toggle_nominal_ordinal_button",
+                       command=self.on_toggle_nominal_ordinal_button_clicked)
+        self.toggle_nominal_ordinal_button.grid(row=0, column=3, sticky="nsew",
+                                         padx=1, pady=1)
+        #self.add_tooltip_to_widget(self.toggle_nominal_ordinal_button)
 
         # column_tab_progressbar
         self.column_tab_progressbar_label = \
@@ -216,7 +353,7 @@ class Warchest():
         # selected_column_name_entry
         self.selected_column_name_label = \
             ttk.Label(self.column_tab,
-                      text="Column Name:",
+                      text="Column name:",
                       name="selected_column_name_label")
         self.selected_column_name_label.grid(row=2, column=0, sticky="nsew",
                                              padx=1, pady=1)
@@ -241,7 +378,7 @@ class Warchest():
         # selected_column_entry
         self.selected_column_label = \
             ttk.Label(self.column_tab,
-                      text="Column Index:",
+                      text="Column index:",
                       name="selected_column_label")
         self.selected_column_label.grid(row=3, column=0, sticky="nsew",
                                         padx=1, pady=1)
@@ -286,12 +423,35 @@ class Warchest():
         self.add_tooltip_to_widget(self.feature_type_entry)
         self.feature_type_entry.configure(state='readonly')
 
+        # available_to_model_entry
+        self.available_to_model_label = \
+            ttk.Label(self.column_tab,
+                      text="Available to model:",
+                      name="available_to_model_label")
+        self.available_to_model_label.grid(row=5, column=0, sticky="nsew",
+                                           padx=1, pady=1)
+        self.available_to_model_label.configure(style='Tabs.TLabel')
+        self.available_to_model_entry = \
+            tk.Entry(self.column_tab,
+                     text="",
+                     readonlybackground='white',
+                     relief='flat',
+                     highlightbackground='black',
+                     highlightthickness=1,
+                     highlightcolor='black',
+                     width=15,
+                     name="available_to_model_entry")
+        self.available_to_model_entry.grid(row=5, column=1, sticky="nsew",
+                                           padx=1, pady=1)
+        self.add_tooltip_to_widget(self.available_to_model_entry)
+        self.available_to_model_entry.configure(state='readonly')
+
         # dtype_entry
         self.dtype_label = \
             ttk.Label(self.column_tab,
                       text="Dtype:",
                       name="dtype_label")
-        self.dtype_label.grid(row=5, column=0, sticky="nsew",
+        self.dtype_label.grid(row=6, column=0, sticky="nsew",
                               padx=1, pady=1)
         self.dtype_label.configure(style='Tabs.TLabel')
         self.dtype_entry = \
@@ -304,7 +464,7 @@ class Warchest():
                      highlightcolor='black',
                      width=15,
                      name="dtype_entry")
-        self.dtype_entry.grid(row=5, column=1, sticky="nsew",
+        self.dtype_entry.grid(row=6, column=1, sticky="nsew",
                               padx=1, pady=1)
         self.add_tooltip_to_widget(self.dtype_entry)
         self.dtype_entry.configure(state='readonly')
@@ -314,7 +474,7 @@ class Warchest():
             ttk.Label(self.column_tab,
                       text="Dense/sparse:",
                       name="dense_sparse_label")
-        self.dense_sparse_label.grid(row=6, column=0, sticky="nsew",
+        self.dense_sparse_label.grid(row=7, column=0, sticky="nsew",
                                      padx=1, pady=1)
         self.dense_sparse_label.configure(style='Tabs.TLabel')
         self.dense_sparse_entry = \
@@ -327,7 +487,7 @@ class Warchest():
                      highlightcolor='black',
                      width=15,
                      name="dense_sparse_entry")
-        self.dense_sparse_entry.grid(row=6, column=1, sticky="nsew",
+        self.dense_sparse_entry.grid(row=7, column=1, sticky="nsew",
                                      padx=1, pady=1)
         self.add_tooltip_to_widget(self.dense_sparse_entry)
         self.dense_sparse_entry.configure(state='readonly')
@@ -337,7 +497,7 @@ class Warchest():
             ttk.Label(self.column_tab,
                       text="Count (non-null):",
                       name="non_null_count_label")
-        self.non_null_count_label.grid(row=7, column=0, sticky="nsew",
+        self.non_null_count_label.grid(row=8, column=0, sticky="nsew",
                                        padx=1, pady=1)
         self.non_null_count_label.configure(style='Tabs.TLabel')
         self.non_null_count_entry = \
@@ -350,7 +510,7 @@ class Warchest():
                      highlightcolor='black',
                      width=15,
                      name="non_null_count_entry")
-        self.non_null_count_entry.grid(row=7, column=1, sticky="nsew",
+        self.non_null_count_entry.grid(row=8, column=1, sticky="nsew",
                                        padx=1, pady=1)
         self.add_tooltip_to_widget(self.non_null_count_entry)
         self.non_null_count_entry.configure(state='readonly')
@@ -1065,7 +1225,549 @@ class Warchest():
         self.ninety_five_pct_of_col_entry.configure(state='readonly')
 
     def create_table_tab_widgets(self):
-        pass
+
+        # ordinal_mappings_button
+        self.ordinal_mappings_button = \
+            ttk.Button(self.table_tab,
+                       text="Ordinal Mappings",
+                       name="ordinal_mappings_button",
+                       command=self.on_ordinal_mappings_button_clicked)
+        self.ordinal_mappings_button.grid(row=0, column=0, sticky="nsew",
+                                         padx=1, pady=1)
+        self.add_tooltip_to_widget(self.ordinal_mappings_button)
+
+        # table_tab_progressbar_label
+        self.table_tab_progressbar_label = \
+            ttk.Label(self.table_tab,
+                      text="")
+        self.table_tab_progressbar_label.grid(row=0, column=14,
+                                              sticky="e",
+                                              padx=1, pady=1)
+        self.table_tab_progressbar_label.configure(style='Tabs.TLabel')
+        self.table_tab_progressbar_label.grid_remove()
+        self.table_tab_progressbar = ttk.Progressbar(self.table_tab,
+                                                     orient=tk.HORIZONTAL,
+                                                     length=50)
+        self.table_tab_progressbar.grid(row=0, column=15, sticky="nsew",
+                                        padx=1, pady=1)
+        self.table_tab_progressbar.config(mode='indeterminate')
+        self.table_tab_progressbar.grid_remove()
+
+        # general_information_section_label
+        self.general_information_section_label_tbl = \
+            ttk.Label(self.table_tab,
+                      text="General Information")
+        self.general_information_section_label_tbl.grid(row=1, column=0,
+                                                        columnspan=2,
+                                                        sticky="nsew",
+                                                        padx=1, pady=1)
+        self.general_information_section_label_tbl. \
+            configure(style='Sections.TLabel')
+
+        # number_of_columns_entry
+        self.number_of_columns_label = \
+            ttk.Label(self.table_tab,
+                      text="Number of columns:",
+                      name="number_of_columns_label")
+        self.number_of_columns_label.grid(row=2, column=0, sticky="nsew",
+                                     padx=1, pady=1)
+        self.number_of_columns_label.configure(style='Tabs.TLabel')
+        self.number_of_columns_entry = \
+            tk.Entry(self.table_tab,
+                     text="",
+                     readonlybackground='white',
+                     relief='flat',
+                     highlightbackground='black',
+                     highlightthickness=1,
+                     highlightcolor='black',
+                     width=15,
+                     name="number_of_columns_entry")
+        self.number_of_columns_entry.grid(row=2, column=1, sticky="nsew",
+                                     padx=1, pady=1)
+        #self.add_tooltip_to_widget(self.number_of_columns_entry)
+        self.number_of_columns_entry.configure(state='readonly')
+
+        # number_of_rows_entry
+        self.number_of_rows_label = \
+            ttk.Label(self.table_tab,
+                      text="Number of rows:",
+                      name="number_of_rows_label")
+        self.number_of_rows_label.grid(row=3, column=0, sticky="nsew",
+                                     padx=1, pady=1)
+        self.number_of_rows_label.configure(style='Tabs.TLabel')
+        self.number_of_rows_entry = \
+            tk.Entry(self.table_tab,
+                     text="",
+                     readonlybackground='white',
+                     relief='flat',
+                     highlightbackground='black',
+                     highlightthickness=1,
+                     highlightcolor='black',
+                     width=15,
+                     name="number_of_rows_entry")
+        self.number_of_rows_entry.grid(row=3, column=1, sticky="nsew",
+                                     padx=1, pady=1)
+        #self.add_tooltip_to_widget(self.number_of_rows_entry)
+        self.number_of_rows_entry.configure(state='readonly')
+
+        # missing_values_in_df_entry
+        self.missing_values_in_df_label = \
+            ttk.Label(self.table_tab,
+                      text="Missing in table:",
+                      name="missing_values_in_df_label")
+        self.missing_values_in_df_label.grid(row=4, column=0, sticky="nsew",
+                                     padx=1, pady=1)
+        self.missing_values_in_df_label.configure(style='Tabs.TLabel')
+        self.missing_values_in_df_entry = \
+            tk.Entry(self.table_tab,
+                     text="",
+                     readonlybackground='white',
+                     relief='flat',
+                     highlightbackground='black',
+                     highlightthickness=1,
+                     highlightcolor='black',
+                     width=15,
+                     name="missing_values_in_df_entry")
+        self.missing_values_in_df_entry.grid(row=4, column=1, sticky="nsew",
+                                     padx=1, pady=1)
+        #self.add_tooltip_to_widget(self.missing_values_in_df_entry)
+        self.missing_values_in_df_entry.configure(state='readonly')
+
+        # memory_usage_section_label
+        self.memory_usage_section_label_tbl = \
+            ttk.Label(self.table_tab,
+                      text="Memory Usage")
+        self.memory_usage_section_label_tbl.grid(row=1, column=2,
+                                             columnspan=2,
+                                             sticky="nsew",
+                                             padx=1, pady=1)
+        self.memory_usage_section_label_tbl. \
+            configure(style='Sections.TLabel')
+
+        # bytes_in_df_entry
+        self.bytes_in_df_label = \
+            ttk.Label(self.table_tab,
+                      text="Bytes in table:",
+                      name="bytes_in_df_label")
+        self.bytes_in_df_label.grid(row=2, column=2, sticky="nsew",
+                                    padx=1, pady=1)
+        self.bytes_in_df_label.configure(style='Tabs.TLabel')
+        self.bytes_in_df_entry = \
+            tk.Entry(self.table_tab,
+                     text="",
+                     readonlybackground='white',
+                     relief='flat',
+                     highlightbackground='black',
+                     highlightthickness=1,
+                     highlightcolor='black',
+                     width=13,
+                     name="bytes_in_df_entry")
+        self.bytes_in_df_entry.grid(row=2, column=3, sticky="nsew",
+                                    padx=1, pady=1)
+        self.add_tooltip_to_widget(self.bytes_in_df_entry)
+        self.bytes_in_df_entry.configure(state='readonly')
+
+        # bytes_in_df_index_entry
+        self.bytes_in_df_index_label = \
+            ttk.Label(self.table_tab,
+                      text="Bytes in table index:",
+                      name="bytes_in_df_index_label")
+        self.bytes_in_df_index_label.grid(row=3, column=2, sticky="nsew",
+                                          padx=1, pady=1)
+        self.bytes_in_df_index_label.configure(style='Tabs.TLabel')
+        self.bytes_in_df_index_entry = \
+            tk.Entry(self.table_tab,
+                     text="",
+                     readonlybackground='white',
+                     relief='flat',
+                     highlightbackground='black',
+                     highlightthickness=1,
+                     highlightcolor='black',
+                     width=13,
+                     name="bytes_in_df_index_entry")
+        self.bytes_in_df_index_entry.grid(row=3, column=3, sticky="nsew",
+                                          padx=1, pady=1)
+        self.add_tooltip_to_widget(self.bytes_in_df_index_entry)
+        self.bytes_in_df_index_entry.configure(state='readonly')
+
+        # memusage_of_df_without_index_entry
+        self.memusage_of_df_without_index_label = \
+            ttk.Label(self.table_tab,
+                      text="Memory usage of table w/o index:",
+                      name="memusage_of_df_without_index_label")
+        self.memusage_of_df_without_index_label.grid(row=4, column=2,
+                                                     sticky="nsew",
+                                                     padx=1, pady=1)
+        self.memusage_of_df_without_index_label.configure(style='Tabs.TLabel')
+        self.memusage_of_df_without_index_entry = \
+            tk.Entry(self.table_tab,
+                     text="",
+                     readonlybackground='white',
+                     relief='flat',
+                     highlightbackground='black',
+                     highlightthickness=1,
+                     highlightcolor='black',
+                     width=13,
+                     name="memusage_of_df_without_index_entry")
+        self.memusage_of_df_without_index_entry.grid(row=4, column=3,
+                                                     sticky="nsew",
+                                                     padx=1, pady=1)
+        self.add_tooltip_to_widget(self.memusage_of_df_without_index_entry)
+        self.memusage_of_df_without_index_entry.configure(state='readonly')
+
+        # memusage_of_df_with_index_entry
+        self.memusage_of_df_with_index_label = \
+            ttk.Label(self.table_tab,
+                      text="Memory usage of table w/index:",
+                      name="memusage_of_df_with_index_label")
+        self.memusage_of_df_with_index_label.grid(row=5, column=2,
+                                                  sticky="nsew",
+                                                  padx=1, pady=1)
+        self.memusage_of_df_with_index_label.configure(style='Tabs.TLabel')
+        self.memusage_of_df_with_index_entry = \
+            tk.Entry(self.table_tab,
+                     text="",
+                     readonlybackground='white',
+                     relief='flat',
+                     highlightbackground='black',
+                     highlightthickness=1,
+                     highlightcolor='black',
+                     width=13,
+                     name="memusage_of_df_with_index_entry")
+        self.memusage_of_df_with_index_entry.grid(row=5, column=3,
+                                                  sticky="nsew",
+                                                  padx=1, pady=1)
+        self.add_tooltip_to_widget(self.memusage_of_df_with_index_entry)
+        self.memusage_of_df_with_index_entry.configure(state='readonly')
+
+        # deep_memusage_of_df_with_index_entry
+        self.deep_memusage_of_df_with_index_label = \
+            ttk.Label(self.table_tab,
+                      text="Deep memory usage of table/index:",
+                      name="deep_memusage_of_df_with_index_label")
+        self.deep_memusage_of_df_with_index_label.grid(row=6, column=2,
+                                                       sticky="nsew",
+                                                       padx=1, pady=1)
+        self.deep_memusage_of_df_with_index_label. \
+            configure(style='Tabs.TLabel')
+        self.deep_memusage_of_df_with_index_entry = \
+            tk.Entry(self.table_tab,
+                     text="",
+                     readonlybackground='white',
+                     relief='flat',
+                     highlightbackground='black',
+                     highlightthickness=1,
+                     highlightcolor='black',
+                     width=13,
+                     name="deep_memusage_of_df_with_index_entry")
+        self.deep_memusage_of_df_with_index_entry.grid(row=6, column=3,
+                                                       sticky="nsew",
+                                                       padx=1, pady=1)
+        self.add_tooltip_to_widget(self.deep_memusage_of_df_with_index_entry)
+        self.deep_memusage_of_df_with_index_entry.configure(state='readonly')
+
+        # getsizeof_df_entry
+        self.getsizeof_df_label = \
+            ttk.Label(self.table_tab,
+                      text="System size of table:",
+                      name="getsizeof_df_label")
+        self.getsizeof_df_label.grid(row=7, column=2, sticky="nsew",
+                                     padx=1, pady=1)
+        self.getsizeof_df_label.configure(style='Tabs.TLabel')
+        self.getsizeof_df_entry = \
+            tk.Entry(self.table_tab,
+                     text="",
+                     readonlybackground='white',
+                     relief='flat',
+                     highlightbackground='black',
+                     highlightthickness=1,
+                     highlightcolor='black',
+                     width=13,
+                     name="getsizeof_df_entry")
+        self.getsizeof_df_entry.grid(row=7, column=3, sticky="nsew",
+                                     padx=1, pady=1)
+        self.add_tooltip_to_widget(self.getsizeof_df_entry)
+        self.getsizeof_df_entry.configure(state='readonly')
+
+        # model_information_section_label
+        self.model_information_section_label = \
+            ttk.Label(self.table_tab,
+                      text="Model Information")
+        self.model_information_section_label.grid(row=1, column=4,
+                                             columnspan=16,
+                                             sticky="nsew",
+                                             padx=1, pady=1)
+        self.model_information_section_label. \
+            configure(style='Sections.TLabel')
+
+        # class_col_entry
+        self.class_col_label = \
+            ttk.Label(self.table_tab,
+                      text="Class label:",
+                      name="class_col_label")
+        self.class_col_label.grid(row=2, column=5, sticky="nsew",
+                                  padx=1, pady=1)
+        self.class_col_label.configure(style='Tabs.TLabel')
+        self.class_col_entry = \
+            tk.Entry(self.table_tab,
+                     text="",
+                     readonlybackground=CELL_CLR_CLS_LBL,
+                     relief='flat',
+                     highlightbackground='black',
+                     highlightthickness=1,
+                     highlightcolor='black',
+                     width=13,
+                     name="class_col_entry")
+        self.class_col_entry.grid(row=2, column=6, sticky="nsew",
+                                  columnspan=2, padx=1, pady=1)
+        #self.add_tooltip_to_widget(self.class_col_entry)
+        self.class_col_entry.configure(state='readonly')
+
+        # not_in_model_cols_text
+        self.not_in_model_cols_label = \
+            ttk.Label(self.table_tab,
+                      text="Not in",
+                      name="not_in_model_cols_label")
+        self.not_in_model_cols_label.grid(row=3, column=5, sticky="nsew",
+                                          padx=1, pady=1)
+        self.not_in_model_cols_label.configure(style='Tabs.TLabel')
+        self.not_in_model_cols_label_addl = \
+            ttk.Label(self.table_tab,
+                      text="model:",
+                      name="not_in_model_cols_label_addl")
+        self.not_in_model_cols_label_addl.grid(row=4, column=5, sticky="nsew",
+                                           padx=1, pady=1)
+        self.not_in_model_cols_label_addl.configure(style='Tabs.TLabel')
+        self.not_in_model_cols_text = \
+            tk.Text(self.table_tab,
+                    background='white',
+                    relief='flat',
+                    font=('Arial', '9'),
+                    highlightbackground='black',
+                    highlightthickness=1,
+                    highlightcolor='black',
+                    width=13,
+                    height=2,
+                    wrap='word',
+                    name="not_in_model_cols_text")
+        self.not_in_model_cols_text.grid(row=3, column=6, sticky="nsew",
+                                         rowspan=6,
+                                         padx=1, pady=1)
+        #self.add_tooltip_to_widget(self.not_in_model_cols_text)
+        self.not_in_model_cols_scrollbar = \
+            ttk.Scrollbar(self.table_tab,
+                          orient=tk.VERTICAL,
+                          command=self.not_in_model_cols_text.yview)
+        self.not_in_model_cols_scrollbar.grid(row=3, column=7, rowspan=6,
+                                              sticky='ns')
+        self.not_in_model_cols_text.configure(yscrollcommand=self.
+                                              not_in_model_cols_scrollbar.set)
+        self.not_in_model_cols_text.configure(state='disabled')
+
+        # numerical_features_text
+        self.numerical_features_label = \
+            ttk.Label(self.table_tab,
+                      text="Numerical",
+                      name="numerical_features_label")
+        self.numerical_features_label.grid(row=2, column=8, sticky="nsew",
+                                           padx=1, pady=1)
+        self.numerical_features_label.configure(style='Tabs.TLabel')
+        self.numerical_features_label_addl = \
+            ttk.Label(self.table_tab,
+                      text="features:",
+                      name="numerical_features_label_addl")
+        self.numerical_features_label_addl.grid(row=3, column=8, sticky="nsew",
+                                           padx=1, pady=1)
+        self.numerical_features_label_addl.configure(style='Tabs.TLabel')
+        self.numerical_features_text = \
+            tk.Text(self.table_tab,
+                    background=CELL_CLR_MODEL_NUMERICAL,
+                    relief='flat',
+                    font=('Arial', '9'),
+                    highlightbackground='black',
+                    highlightthickness=1,
+                    highlightcolor='black',
+                    width=13,
+                    height=2,
+                    wrap='word',
+                    name="numerical_features_text")
+        self.numerical_features_text.grid(row=2, column=9, sticky="nsew",
+                                         rowspan=7,
+                                         padx=1, pady=1)
+        #self.add_tooltip_to_widget(self.numerical_features_text)
+        self.numerical_features_scrollbar = \
+            ttk.Scrollbar(self.table_tab,
+                          orient=tk.VERTICAL,
+                          command=self.numerical_features_text.yview)
+        self.numerical_features_scrollbar.grid(row=2, column=10, rowspan=7,
+                                               sticky='ns')
+        self.numerical_features_text.configure(yscrollcommand=self.
+                                               numerical_features_scrollbar.set)
+        self.numerical_features_text.configure(state='disabled')
+
+        # nominal_features_text
+        self.nominal_features_label = \
+            ttk.Label(self.table_tab,
+                      text="Nominal",
+                      name="nominal_features_label")
+        self.nominal_features_label.grid(row=2, column=11, sticky="nsew",
+                                         padx=1, pady=1)
+        self.nominal_features_label.configure(style='Tabs.TLabel')
+        self.nominal_features_label_addl = \
+            ttk.Label(self.table_tab,
+                      text="features:",
+                      name="nominal_features_label_addl")
+        self.nominal_features_label_addl.grid(row=3, column=11, sticky="nsew",
+                                              padx=1, pady=1)
+        self.nominal_features_label_addl.configure(style='Tabs.TLabel')
+        self.nominal_features_text = \
+            tk.Text(self.table_tab,
+                    background=CELL_CLR_MODEL_NOMINAL,
+                    relief='flat',
+                    font=('Arial', '9'),
+                    highlightbackground='black',
+                    highlightthickness=1,
+                    highlightcolor='black',
+                    width=13,
+                    height=2,
+                    wrap='word',
+                    name="nominal_features_text")
+        self.nominal_features_text.grid(row=2, column=12, sticky="nsew",
+                                        rowspan=7,
+                                        padx=1, pady=1)
+        #self.add_tooltip_to_widget(self.nominal_features_text)
+        self.nominal_features_text_scrollbar = \
+            ttk.Scrollbar(self.table_tab,
+                          orient=tk.VERTICAL,
+                          command=self.nominal_features_text.yview)
+        self.nominal_features_text_scrollbar.grid(row=2, column=13, rowspan=7,
+                                                  sticky='ns')
+        self.nominal_features_text.configure(yscrollcommand=self.
+                                             nominal_features_text_scrollbar.set)
+        self.nominal_features_text.configure(state='disabled')
+
+        # ordinal_features_text
+        self.ordinal_features_label = \
+            ttk.Label(self.table_tab,
+                      text="Ordinal",
+                      name="ordinal_features_label")
+        self.ordinal_features_label.grid(row=2, column=14, sticky="nsew",
+                                         padx=1, pady=1)
+        self.ordinal_features_label.configure(style='Tabs.TLabel')
+        self.ordinal_features_label_addl = \
+            ttk.Label(self.table_tab,
+                      text="features:",
+                      name="ordinal_features_label_addl")
+        self.ordinal_features_label_addl.grid(row=3, column=14, sticky="nsew",
+                                              padx=1, pady=1)
+        self.ordinal_features_label_addl.configure(style='Tabs.TLabel')
+        self.ordinal_features_text = \
+            tk.Text(self.table_tab,
+                    background=CELL_CLR_MODEL_ORDINAL,
+                    relief='flat',
+                    font=('Arial', '9'),
+                    highlightbackground='black',
+                    highlightthickness=1,
+                    highlightcolor='black',
+                    width=13,
+                    height=2,
+                    wrap='word',
+                    name="ordinal_features_text")
+        self.ordinal_features_text.grid(row=2, column=15, sticky="nsew",
+                                        rowspan=7,
+                                        padx=1, pady=1)
+        #self.add_tooltip_to_widget(self.ordinal_features_text)
+        self.ordinal_features_text_scrollbar = \
+            ttk.Scrollbar(self.table_tab,
+                          orient=tk.VERTICAL,
+                          command=self.ordinal_features_text.yview)
+        self.ordinal_features_text_scrollbar.grid(row=2, column=16, rowspan=7,
+                                                  sticky='ns')
+        self.ordinal_features_text.configure(yscrollcommand=self.
+                                             ordinal_features_text_scrollbar.set)
+        self.ordinal_features_text.configure(state='disabled')
+
+        # datetime_features_text
+        self.datetime_features_label = \
+            ttk.Label(self.table_tab,
+                      text="Datetime",
+                      name="datetime_features_label")
+        self.datetime_features_label.grid(row=2, column=17, sticky="nsew",
+                                         padx=1, pady=1)
+        self.datetime_features_label.configure(style='Tabs.TLabel')
+        self.datetime_features_label_addl = \
+            ttk.Label(self.table_tab,
+                      text="features:",
+                      name="datetime_features_label_addl")
+        self.datetime_features_label_addl.grid(row=3, column=17, sticky="nsew",
+                                              padx=1, pady=1)
+        self.datetime_features_label_addl.configure(style='Tabs.TLabel')
+        self.datetime_features_text = \
+            tk.Text(self.table_tab,
+                    background=CELL_CLR_MODEL_DATETIME,
+                    relief='flat',
+                    font=('Arial', '9'),
+                    highlightbackground='black',
+                    highlightthickness=1,
+                    highlightcolor='black',
+                    width=13,
+                    height=2,
+                    wrap='word',
+                    name="datetime_features_text")
+        self.datetime_features_text.grid(row=2, column=18, sticky="nsew",
+                                        rowspan=3,
+                                        padx=1, pady=1)
+        #self.add_tooltip_to_widget(self.datetime_features_text)
+        self.datetime_features_text_scrollbar = \
+            ttk.Scrollbar(self.table_tab,
+                          orient=tk.VERTICAL,
+                          command=self.datetime_features_text.yview)
+        self.datetime_features_text_scrollbar.grid(row=2, column=19, rowspan=3,
+                                                  sticky='ns')
+        self.datetime_features_text.configure(yscrollcommand=self.
+                                             datetime_features_text_scrollbar.set)
+        self.datetime_features_text.configure(state='disabled')
+
+        # boolean_features_text
+        self.boolean_features_label = \
+            ttk.Label(self.table_tab,
+                      text="Boolean",
+                      name="boolean_features_label")
+        self.boolean_features_label.grid(row=5, column=17, sticky="nsew",
+                                         padx=1, pady=1)
+        self.boolean_features_label.configure(style='Tabs.TLabel')
+        self.boolean_features_label_addl = \
+            ttk.Label(self.table_tab,
+                      text="features:",
+                      name="boolean_features_label_addl")
+        self.boolean_features_label_addl.grid(row=6, column=17, sticky="nsew",
+                                              padx=1, pady=1)
+        self.boolean_features_label_addl.configure(style='Tabs.TLabel')
+        self.boolean_features_text = \
+            tk.Text(self.table_tab,
+                    background=CELL_CLR_MODEL_BOOLEAN,
+                    relief='flat',
+                    font=('Arial', '9'),
+                    highlightbackground='black',
+                    highlightthickness=1,
+                    highlightcolor='black',
+                    width=13,
+                    height=2,
+                    wrap='word',
+                    name="boolean_features_text")
+        self.boolean_features_text.grid(row=5, column=18, sticky="nsew",
+                                        rowspan=3,
+                                        padx=1, pady=1)
+        #self.add_tooltip_to_widget(self.boolean_features_text)
+        self.boolean_features_text_scrollbar = \
+            ttk.Scrollbar(self.table_tab,
+                          orient=tk.VERTICAL,
+                          command=self.boolean_features_text.yview)
+        self.boolean_features_text_scrollbar.grid(row=5, column=19, rowspan=3,
+                                                  sticky='ns')
+        self.boolean_features_text.configure(yscrollcommand=self.
+                                             boolean_features_text_scrollbar.set)
+        self.boolean_features_text.configure(state='disabled')
 
     def create_insights_tab_widgets(self):
 
@@ -1098,14 +1800,53 @@ class Warchest():
                           command=self.insights_tree.yview)
         self.insights_tree_scrollbar.grid(row=0, column=1, sticky='ns')
         self.insights_tree.configure(yscrollcommand=self.
-                                        insights_tree_scrollbar.set)
+                                     insights_tree_scrollbar.set)
 
-    def create_transformations_tab_widgets(self):
-        pass
+    def create_transformations_log_tab_widgets(self):
+
+        # transformations_log_tree
+        self.transformations_log_tree = \
+            ttk.Treeview(self.transformations_log_tab,
+                         height=10,
+                         #columns=5,
+                         columns=('Transformation','Session Name','Created On','Session ID','Trans ID', 'Replicate'),
+                         #text="Describe Column",
+                         selectmode = 'browse',
+                         name="transformations_log_tree")
+        self.transformations_log_tree.grid(row=0, column=0, sticky="nsew",
+                                padx=1, pady=1)
+        self.transformations_log_tree.column('#0', width=745)
+        self.transformations_log_tree.column('#1', width=200)
+        self.transformations_log_tree.column('#2', width=175)
+        self.transformations_log_tree.column('#3', width=75)
+        self.transformations_log_tree.column('#4', width=75)
+        self.transformations_log_tree.column('#5', width=75)
+        self.transformations_log_tree.column('#6', width=0)
+        self.transformations_log_tree.heading('#0', text='Transformation', anchor=tk.W)
+        self.transformations_log_tree.heading('#1', text='Session Name', anchor=tk.W)
+        self.transformations_log_tree.heading('#2', text='Created On', anchor=tk.W)
+        self.transformations_log_tree.heading('#3', text='Session ID', anchor=tk.W)
+        self.transformations_log_tree.heading('#4', text='Trans ID', anchor=tk.W)
+        self.transformations_log_tree.heading('#5', text='Replicate', anchor=tk.W)
+
+        self.transformations_log_tree.tag_configure('odd_row', background='white')
+        self.transformations_log_tree.tag_configure('even_row', background='grey90')
+
+        self.transformations_log_tree.bind("<Double-Button-1>",
+                               self.handle_transformations_log_double_click)
+
+        self.transformations_log_tree_scrollbar = \
+            ttk.Scrollbar(self.transformations_log_tab,
+                          orient=tk.VERTICAL,
+                          command=self.transformations_log_tree.yview)
+        self.transformations_log_tree_scrollbar.grid(row=0, column=1, sticky='ns')
+        self.transformations_log_tree.configure(yscrollcommand=self.
+                                        transformations_log_tree_scrollbar.set)
 
     def on_describe_column_button_clicked(self):
 
-        self.update_column_tab_widgets()
+        pass
+#        self.update_column_tab_widgets()
 
     def on_analyze_column_button_clicked(self):
 
@@ -1121,7 +1862,84 @@ class Warchest():
 
         self.update_insights_tab_widgets(insight)  # update for selected column
 
-    def on_ordinal_mapping_button_clicked(self):
+    def on_toggle_model_availability_button_clicked(self):
+
+        self.available_to_model = self. \
+            get_model_option_x('available_to_model_dict')
+
+#        #self.update_column_tab_widgets()
+#        for row in self.read_integer_from_db(table_name='TopAreaItems',
+#                                             item_name='selected_column'):
+#            selected_column = row[0]
+#
+#        if self.available_to_model[selected_column] == 'No':
+#            self.available_to_model[selected_column] = 'Yes'
+#        else:
+#            self.available_to_model[selected_column] = 'No'
+
+        if self.available_to_model[self.selected_column] == 'No':
+            self.available_to_model[self.selected_column] = 'Yes'
+        else:
+            self.available_to_model[self.selected_column] = 'No'
+
+        self.update_model_option_available_to_model(self.available_to_model)
+        self.update_column_tab_widgets()
+
+    def on_toggle_class_label_status_button_clicked(self):
+
+        self.class_label_status = self. \
+            get_model_option_x('class_label_status_dict')
+
+#        #self.update_column_tab_widgets()
+#        for row in self.read_integer_from_db(table_name='TopAreaItems',
+#                                             item_name='selected_column'):
+#            selected_column = row[0]
+
+#        if self.class_label_status[selected_column] == 'No':
+#
+#            for i in range(len(self.table.model.df.columns)):
+#                self.class_label_status[i] = 'No'
+#            self.class_label_status[selected_column] = 'Yes'
+#
+#        else:
+#            self.class_label_status[selected_column] = 'No'
+
+        if self.class_label_status[self.selected_column] == 'No':
+
+            for i in range(len(self.table.model.df.columns)):
+                self.class_label_status[i] = 'No'
+            self.class_label_status[self.selected_column] = 'Yes'
+
+        else:
+            self.class_label_status[self.selected_column] = 'No'
+
+        self.update_model_option_class_label_status(self.class_label_status)
+        self.update_column_tab_widgets()
+
+    def on_toggle_nominal_ordinal_button_clicked(self):
+
+        self.nominal_ordinal = self.get_model_option_x('nominal_ordinal_dict')
+
+#        #self.update_column_tab_widgets()
+#        for row in self.read_integer_from_db(table_name='TopAreaItems',
+#                                             item_name='selected_column'):
+#            selected_column = row[0]
+
+#        if self.nominal_ordinal[selected_column] == 'nominal':
+#            self.nominal_ordinal[selected_column] = 'ordinal'
+#        else:
+#            self.nominal_ordinal[selected_column] = 'nominal'
+
+        if self.nominal_ordinal[self.selected_column] == 'nominal':
+            self.nominal_ordinal[self.selected_column] = 'ordinal'
+        else:
+            self.nominal_ordinal[self.selected_column] = 'nominal'
+
+        self.update_model_option_nominal_ordinal(self.nominal_ordinal)
+        #self.update_model_columns()
+        self.update_column_tab_widgets()
+
+    def on_ordinal_mappings_button_clicked(self):
 
         self.update_column_tab_widgets()  # update for selected column
 
@@ -1134,12 +1952,15 @@ class Warchest():
         self.turn_progressbar_on(self.column_tab_progressbar,
                                  self.column_tab_progressbar_label)
 
+        self.update_table_tab_widgets()
+
         self.column_tab_dict = {}
 
         # General Information --------------------------------
         self.update_selected_column_name_entry()
         self.update_selected_column_entry()
         self.update_feature_type_entry()
+        self.update_available_to_model_entry()
         self.update_dtype_entry()
         self.update_dense_sparse_entry()
         self.update_non_null_count_entry()
@@ -1180,6 +2001,36 @@ class Warchest():
         self.turn_progressbar_off(self.column_tab_progressbar,
                                   self.column_tab_progressbar_label)
 
+    def update_table_tab_widgets(self):
+
+        self.turn_progressbar_on(self.table_tab_progressbar,
+                                 self.table_tab_progressbar_label)
+
+        # General Information --------------------------------
+        self.update_number_of_columns_entry()
+        self.update_number_of_rows_entry()
+        self.update_missing_values_in_df_entry()
+
+        # Memory Usage ---------------------------------------
+        self.update_bytes_in_df_entry()
+        self.update_bytes_in_df_index_entry()
+        self.update_memusage_of_df_without_index_entry()
+        self.update_memusage_of_df_with_index_entry()
+        self.update_deep_memusage_of_df_with_index_entry()
+        self.update_getsizeof_df_entry()
+
+        # Model Information --------------------------------
+        self.update_class_col_entry()
+        self.update_not_in_model_cols_text()
+        self.update_numerical_features_text()
+        self.update_nominal_features_text()
+        self.update_ordinal_features_text()
+        self.update_datetime_features_text()
+        self.update_boolean_features_text()
+
+        self.turn_progressbar_off(self.table_tab_progressbar,
+                                  self.table_tab_progressbar_label)
+
     def update_insights_tab_widgets(self, cls):
 
         # remove current items from tree
@@ -1190,22 +2041,72 @@ class Warchest():
             self.insights_tree.insert('', 0, text=row[2], values=(row[1],
                                       row[3], row[4], row[5]))
 
+    def update_transformations_log_tab_widgets(self):
+
+        trans = Transformation()
+
+        for item in self.transformations_log_tree.get_children():
+            self.transformations_log_tree.delete(item)
+
+        self.transformations_log_list = [
+            {
+                'TransformationLogID': row[0],
+                'SessionID': row[1],
+                'SessionDesc': row[2],
+                'ColumnIndex': row[3],
+                'ColumnName': row[4],
+                'TransformationID': row[5],
+                'TransformationDesc': row[6],
+                'DateCreated': row[7],
+                'TransformationLogDesc': row[8],
+                'IsReplicate': row[9],
+                'DType': row[10]
+            }
+            for row in trans.get_transformations_by_session(self.session_id)]
+          #  for k in range(MAX_NUMBER_OF_PATTERNS)]
+
+        for i, row in enumerate(trans.get_transformations_by_session(self.session_id)):
+
+#            print(row[8])
+#            print(row[2])
+#            print(row[7])
+#            print(row[1])
+#            print(row[0])
+
+            if is_even(i):
+                self.transformations_log_tree.insert('', 0, text=row[8],
+                                                     values=(row[2],
+                                                     row[7], row[1], row[0],
+                                                     row[9]),
+                                                     tags=('even_row',))
+            else:
+                self.transformations_log_tree.insert('', 0, text=row[8],
+                                                     values=(row[2],
+                                                     row[7], row[1], row[0],
+                                                     row[9]),
+                                                     tags=('odd_row',))
+
+        #print(self.transformations_log_list)
+
+
+    # BEGIN COLUMN TAB WIDGETS #
+
     # General Information --------------------------------
     def update_selected_column_name_entry(self):
 
-        for row in self.read_text_from_db(table_name='TopAreaItems',
-                                          item_name='selected_column_name'):
-            if row[0] != '':  # if there's somwething in the DB
-                self.selected_column_name = row[0]
+#        for row in self.read_text_from_db(table_name='TopAreaItems',
+#                                          item_name='selected_column_name'):
+#            if row[0] != '':  # if there's somwething in the DB
+#                self.selected_column_name = row[0]
         string = str(self.selected_column_name)
         self.update_disabled_widget(self.selected_column_name_entry, string)
         self.update_column_tab_dict(self.selected_column_name_entry, string)
 
     def update_selected_column_entry(self):
 
-        for row in self.read_integer_from_db(table_name='TopAreaItems',
-                                             item_name='selected_column'):
-            self.selected_column = row[0]
+#        for row in self.read_integer_from_db(table_name='TopAreaItems',
+#                                             item_name='selected_column'):
+#            self.selected_column = row[0]
         string = str(self.selected_column)
         self.update_disabled_widget(self.selected_column_entry, string)
         self.update_column_tab_dict(self.selected_column_entry, string)
@@ -1219,6 +2120,89 @@ class Warchest():
         string = self.get_feature_type(self.get_col_values())
         self.update_disabled_widget(self.feature_type_entry, string)
         self.update_column_tab_dict(self.feature_type_entry, string)
+
+    def update_available_to_model_entry(self):
+
+#        self.available_to_model = self. \
+#            get_model_option_x('available_to_model_dict')
+#        self.class_label_status = self. \
+#            get_model_option_x('class_label_status_dict')
+#        self.nominal_ordinal = self. \
+#            get_model_option_x('nominal_ordinal_dict')
+#        self.available_to_model_final = self. \
+#            get_model_option_x('available_to_model_final_dict')
+#        self.available_to_model_final = self. \
+#            get_model_option_x('available_to_model_final_dict')
+
+        self.update_model_columns()
+
+        self.model_columns = self. \
+            get_model_option_x('model_columns_dict')
+
+        if self.model_columns[self.selected_column] == 'No':
+            string = 'No'
+            self.available_to_model_entry. \
+                configure(readonlybackground=CELL_CLR_NORMAL)
+#            self.apply_column_color(self.selected_column, CELL_CLR_NORMAL)
+        elif self.model_columns[self.selected_column] == 'Class (numerical)':
+            string = 'Class (numerical)'
+            self.available_to_model_entry. \
+                configure(readonlybackground=CELL_CLR_CLS_LBL)
+#            self.apply_column_color(self.selected_column, CELL_CLR_CLS_LBL)
+        elif self.model_columns[self.selected_column] == 'Yes (numerical)':
+            string = 'Yes (numerical)'
+            self.available_to_model_entry. \
+                configure(readonlybackground=CELL_CLR_MODEL_NUMERICAL)
+#            self.apply_column_color(self.selected_column,
+#                                    CELL_CLR_MODEL_NUMERICAL)
+        elif self.model_columns[self.selected_column] == 'Class (datetime)':
+            string = 'Class (datetime)'
+            self.available_to_model_entry. \
+                configure(readonlybackground=CELL_CLR_CLS_LBL)
+#            self.apply_column_color(self.selected_column,
+#                                    CELL_CLR_CLS_LBL)
+        elif self.model_columns[self.selected_column] == 'Yes (datetime)':
+            string = 'Yes (datetime)'
+            self.available_to_model_entry. \
+                configure(readonlybackground=CELL_CLR_MODEL_DATETIME)
+#            self.apply_column_color(self.selected_column,
+#                                    CELL_CLR_MODEL_DATETIME)
+        elif self.model_columns[self.selected_column] == 'Class (boolean)':
+            string = 'Class (boolean)'
+            self.available_to_model_entry. \
+                configure(readonlybackground=CELL_CLR_CLS_LBL)
+#            self.apply_column_color(self.selected_column,
+#                                    CELL_CLR_CLS_LBL)
+        elif self.model_columns[self.selected_column] == 'Yes (boolean)':
+            string = 'Yes (boolean)'
+            self.available_to_model_entry. \
+                configure(readonlybackground=CELL_CLR_MODEL_BOOLEAN)
+#            self.apply_column_color(self.selected_column,
+#                                    CELL_CLR_MODEL_BOOLEAN)
+        elif self.model_columns[self.selected_column] == 'Class (nominal)':
+            string = 'Class (nominal)'
+            self.available_to_model_entry. \
+                configure(readonlybackground=CELL_CLR_CLS_LBL)
+#            self.apply_column_color(self.selected_column,
+#                                    CELL_CLR_CLS_LBL)
+        elif self.model_columns[self.selected_column] == 'Yes (nominal)':
+            string = 'Yes (nominal)'
+            self.available_to_model_entry. \
+                configure(readonlybackground=CELL_CLR_MODEL_NOMINAL)
+#            self.apply_column_color(self.selected_column,
+#                                    CELL_CLR_MODEL_NOMINAL)
+        elif self.model_columns[self.selected_column] == 'Yes (ordinal)':
+            string = 'Yes (ordinal)'
+            self.available_to_model_entry. \
+                configure(readonlybackground=CELL_CLR_MODEL_ORDINAL)
+#            self.apply_column_color(self.selected_column,
+#                                    CELL_CLR_MODEL_ORDINAL)
+
+      #  self.available_to_model_final[self.selected_column] = string
+#        self.update_model_option_available_to_model_final(self.available_to_model_final)
+
+        self.update_disabled_widget(self.available_to_model_entry, string)
+        self.update_column_tab_dict(self.available_to_model_entry, string)
 
     def update_dtype_entry(self):
 
@@ -1356,7 +2340,7 @@ class Warchest():
             for i, row in self.get_col_values().mode().iteritems():
                 string = string + str(self.get_col_values().mode()[i]) + '\n'
         else:
-            if len(self.get_col_values().index) == 0:  # if column is empty
+            if self.get_col_values().mode().count() == 0:  # if column is empty
                 string = "N/A"
             else:
                 string = str(self.get_col_values().mode()[0])
@@ -1516,19 +2500,153 @@ class Warchest():
         self.update_disabled_widget(self.ninety_five_pct_of_col_entry, string)
         self.update_column_tab_dict(self.ninety_five_pct_of_col_entry, string)
 
-    def create_dataframe_area(self):
+    # END COLUMN TAB WIDGETS #
 
-        self.dataframe_area = tk.Frame(self.root, bg="white")
-        self.dataframe_area.pack(fill='both', expand=1)
-#        self.dataframe_area = tk.Canvas(self.root, bg='white', relief='groove',
-#                                        width = 640, height = 480,
-#                                        scrollregion=(0,0,640,480))
-#        self.dataframe_area.grid(row=0, column=0, sticky="nsew", padx=1, pady=1)
-#        self.dataframe_area.bind('<1>', self.on_dataframe_area_click)
-        #self.dataframe_area.config(width = 640, height = 480)
-        #ttk.Button(self.dataframe_area, text='Click Me').grid()
-#        vb = self.root.geometry()
-#        print(vb)
+    # BEGIN TABLE TAB WIDGETS #
+
+    # General Information --------------------------------
+    def update_number_of_columns_entry(self):
+
+        # self.get_updated_pandastable_df()
+        string = len(self.table.model.df.columns)
+        self.update_disabled_widget(self.number_of_columns_entry, string)
+
+    def update_number_of_rows_entry(self):
+
+        # self.get_updated_pandastable_df()
+        string = len(self.table.model.df.index)
+        self.update_disabled_widget(self.number_of_rows_entry, string)
+
+    def update_missing_values_in_df_entry(self):
+
+        # self.get_updated_pandastable_df()
+
+        if len(self.table.model.df.index) == 0:
+            string = "N/A"
+        else:
+            pct = "{0:.2f}".format(100 * (self.table.model.df.
+                                   isnull().sum().sum()) /
+                                   (len(self.table.model.df.index) *
+                                    len(self.table.model.df.columns)))
+            string = str(self.table.model.df.
+                         isnull().sum().sum()) + " (" + str(pct) + "%)"
+        self.update_disabled_widget(self.missing_values_in_df_entry, string)
+
+    # Memory Usage ---------------------------------------
+    def update_bytes_in_df_entry(self):
+
+        total = 0
+        for index, column in enumerate(self.table.model.df.columns):
+            total += self.get_col_values_by_col(index).nbytes
+
+        string = str(total)
+        self.update_disabled_widget(self.bytes_in_df_entry, string)
+
+    def update_bytes_in_df_index_entry(self):
+
+        total = 0
+        for index, column in enumerate(self.table.model.df.columns):
+            total += self.get_col_values_by_col(index).index.nbytes
+
+        string = str(total)
+        self.update_disabled_widget(self.bytes_in_df_index_entry, string)
+
+    def update_memusage_of_df_without_index_entry(self):
+
+        total = 0
+        for index, column in enumerate(self.table.model.df.columns):
+            total += self.get_col_values_by_col(index). \
+                memory_usage(index=False, deep=False)
+
+        string = str(total)
+        self.update_disabled_widget(self.memusage_of_df_without_index_entry,
+                                    string)
+
+    def update_memusage_of_df_with_index_entry(self):
+
+        total = 0
+        for index, column in enumerate(self.table.model.df.columns):
+            total += self.get_col_values_by_col(index). \
+                memory_usage(index=True, deep=False)
+
+        string = str(total)
+        self.update_disabled_widget(self.memusage_of_df_with_index_entry,
+                                    string)
+
+    def update_deep_memusage_of_df_with_index_entry(self):
+
+        total = 0
+        for index, column in enumerate(self.table.model.df.columns):
+            total += self.get_col_values_by_col(index). \
+                memory_usage(index=True, deep=True)
+
+        string = str(total)
+        self.update_disabled_widget(self.deep_memusage_of_df_with_index_entry,
+                                    string)
+
+    def update_getsizeof_df_entry(self):
+
+        import sys
+
+        total = 0
+        for index, column in enumerate(self.table.model.df.columns):
+            total += sys.getsizeof(self.get_col_values_by_col(index))
+
+        string = str(total)
+        self.update_disabled_widget(self.getsizeof_df_entry, string)
+
+    # Model Information --------------------------------
+
+    def update_class_col_entry(self):
+
+        lst = []
+        for k, v in self.model_columns.items():
+
+            if (v == "Class (numerical)") or \
+               (v == "Class (datetime)") or \
+               (v == "Class (boolean)") or \
+               (v == "Class (nominal)"):
+
+                lst.append([self.get_col_name_by_index(k)])
+
+        if len(lst) > 0:
+            string = lst
+        else:
+            string = "N/A"
+
+        self.update_disabled_widget(self.class_col_entry, string)
+
+    def update_not_in_model_cols_text(self):
+
+        string = self.get_model_column_names_by_feature("No")
+        self.update_disabled_widget(self.not_in_model_cols_text, string)
+
+    def update_numerical_features_text(self):
+
+        string = self.get_model_column_names_by_feature("Yes (numerical)")
+        self.update_disabled_widget(self.numerical_features_text, string)
+
+    def update_nominal_features_text(self):
+
+        string = self.get_model_column_names_by_feature("Yes (nominal)")
+        self.update_disabled_widget(self.nominal_features_text, string)
+
+    def update_ordinal_features_text(self):
+
+        string = self.get_model_column_names_by_feature("Yes (ordinal)")
+        self.update_disabled_widget(self.ordinal_features_text, string)
+
+    def update_datetime_features_text(self):
+
+        string = self.get_model_column_names_by_feature("Yes (datetime)")
+        self.update_disabled_widget(self.datetime_features_text, string)
+
+    def update_boolean_features_text(self):
+
+        string = self.get_model_column_names_by_feature("Yes (boolean)")
+        self.update_disabled_widget(self.boolean_features_text, string)
+
+    # END TABLE TAB WIDGETS #
 
     def on_select_dataset_menu_clicked(self):
 
@@ -1537,7 +2655,8 @@ class Warchest():
     def get_selected_dataset(self):
 
         qry = 'SELECT SelectedDataset FROM Datasets'
-        cursor = self.execute_db_query(qry)
+        # cursor = self.execute_db_query(qry)
+        cursor = exec_qry(qry)
 
         for row in cursor:
             return row[0]
@@ -1554,31 +2673,82 @@ class Warchest():
         self.clean_top_area_items()
 
         # Load iris Dataset
-        #self.df = load_dataset('iris')
+        #self.loaded_df = load_dataset('iris')
 
         self.selected_dataset = self.get_selected_dataset()
         if self.selected_dataset == '':
             messagebox.showwarning("Warning", "No dataset selected.")
             return
         else:
-            self.df = self.load_dataset(self.selected_dataset)
+            self.loaded_df = self.load_dataset(self.selected_dataset)
 
         # Load eda Dataset
-        #self.df = load_dataset('eda')
+        #self.loaded_df = load_dataset('eda')
 
         self.table = pt = Table(self.dataframe_area,
-                                dataframe=self.df,
+                                dataframe=self.loaded_df,
+                                callback=self.update_from_pandastable,
                                 showtoolbar=True,
                                 showstatusbar=True,
                                 absolute_path=self.absolute_path)
         #pt.importCSV('iris.csv') # ./datasets/iris.csv'
         pt.show()
-        self.get_updated_pandastable_df()
+
+        session = Session()
+        self.session_id = session.add_session(self.selected_dataset)
+
+        # self.get_updated_pandastable_df()
         self.selected_column = pt.currentcol
         self.selected_column_name = pt.currentcol_name
+
+        self.init_available_to_model_dict()
+        self.init_class_label_status_dict()
+        self.init_nominal_ordinal_dict()
+        self.init_model_columns_dict()
+
         self.create_top_area_items()
+
+#        self.check_db_in_thread()
+
         self.update_column_tab_widgets()
         #pt.redraw()
+
+    def update_from_pandastable(self, selected_column, selected_column_name,
+                                option):
+
+        self.selected_column = selected_column
+        self.selected_column_name = selected_column_name
+
+        if option == 'describe_column':
+            self.describe_column()
+
+    def init_available_to_model_dict(self):
+
+        self.available_to_model.clear()
+        for i in range(len(self.table.model.df.columns)):
+            self.available_to_model[i] = 'No'
+        self.update_model_option_available_to_model(self.available_to_model)
+
+    def init_class_label_status_dict(self):
+
+        self.class_label_status.clear()
+        for i in range(len(self.table.model.df.columns)):
+            self.class_label_status[i] = 'No'
+        self.update_model_option_class_label_status(self.class_label_status)
+
+    def init_nominal_ordinal_dict(self):
+
+        self.nominal_ordinal.clear()
+        for i in range(len(self.table.model.df.columns)):
+            self.nominal_ordinal[i] = 'nominal'
+        self.update_model_option_nominal_ordinal(self.nominal_ordinal)
+
+    def init_model_columns_dict(self):
+
+        self.model_columns.clear()
+        for i in range(len(self.table.model.df.columns)):
+            self.model_columns[i] = 'No'
+        self.update_model_option_model_columns(self.model_columns)
 
     def get_feature_type(self, col_values):
 
@@ -1673,20 +2843,36 @@ class Warchest():
         #is_string_dtype
         #dtype.kind in ('O', 'S', 'U') and not is_period_dtype(dtype)
 
-
-    def get_updated_pandastable_df(self):
-
-        # get df from the pandastable model
-        self.pandastable_df = self.table.model.df
+#    def get_updated_pandastable_df(self):
+#
+#        # get df from the pandastable model
+#        self.pandastable_df = self.table.model.df
 
     def get_values_from_selected_column(self):
 
-        return self.pandastable_df.iloc[:, self.selected_column]
+        # return self.pandastable_df.iloc[:, self.selected_column]
+        return self.table.model.df.iloc[:, self.selected_column]
+
+    def get_values_from_any_column(self, index):
+
+        # return self.pandastable_df.iloc[:, index]
+        return self.table.model.df.iloc[:, index]
 
     def get_col_values(self):
 
-        self.get_updated_pandastable_df()
+        # self.get_updated_pandastable_df()
         return self.get_values_from_selected_column()
+
+    def get_col_values_by_col(self, index):
+
+        # self.get_updated_pandastable_df()
+        return self.get_values_from_any_column(index)
+
+    def get_col_name_by_index(self, index):
+
+        # self.get_updated_pandastable_df()
+        # return self.pandastable_df.columns[index]
+        return self.table.model.df.columns[index]
 
     def add_tooltip_to_widget(self, widget):
 
@@ -1697,74 +2883,74 @@ class Warchest():
             tooltip_text = row[0]
         self.tooltip.bind(widget, tooltip_text)
 
-    def execute_db_query(self, query, parameters=()):
-        with sqlite3.connect(self.db_filename) as conn:
-            cursor = conn.cursor()
-            query_result = cursor.execute(query, parameters)
-            conn.commit()
-        return query_result
+#    def execute_db_query(self, query, parameters=()):
+#        with sqlite3.connect(self.db_filename) as conn:
+#            cursor = conn.cursor()
+#            query_result = cursor.execute(query, parameters)
+#            conn.commit()
+#        return query_result
 
-    def read_integer_from_db(self, table_name=None, item_name=None):
+#    def read_integer_from_db(self, table_name=None, item_name=None):
+#
+#        if table_name == 'TopAreaItems':
+#            where_column1 = 'ItemName'
+#            sel_column_1 = 'IntegerContent'
+#
+##        query = "SELECT ({coi}) FROM {tn} WHERE {cn}={my_id}".\
+##                format(coi=column_3, tn=table_name, cn=column_2, my_id=item_name)
+#        query = "SELECT {col} FROM {tbl} WHERE {cond}=?".\
+#                format(col=sel_column_1,
+#                       tbl=table_name,
+#                       cond=where_column1)
+#        parameters = (item_name,)
+#
+#        return self.execute_db_query(query, parameters)
 
-        if table_name == 'TopAreaItems':
-            where_column1 = 'ItemName'
-            sel_column_1 = 'IntegerContent'
+#    def read_text_from_db(self, table_name=None, item_name=None):
+#
+#        if table_name == 'TopAreaItems':
+#            where_column1 = 'ItemName'
+#            sel_column_1 = 'TextContent'
+#
+#        query = "SELECT {col} FROM {tbl} WHERE {cond}=?".\
+#                format(col=sel_column_1,
+#                       tbl=table_name,
+#                       cond=where_column1)
+#        parameters = (item_name,)
+#
+#        return self.execute_db_query(query, parameters)
 
-#        query = "SELECT ({coi}) FROM {tn} WHERE {cn}={my_id}".\
-#                format(coi=column_3, tn=table_name, cn=column_2, my_id=item_name)
-        query = "SELECT {col} FROM {tbl} WHERE {cond}=?".\
-                format(col=sel_column_1,
-                       tbl=table_name,
-                       cond=where_column1)
-        parameters = (item_name,)
+#    def write_integer_to_db(self, table_name=None,
+#                            item_name=None,
+#                            item_value=None):
+#
+#        if table_name == 'TopAreaItems':
+#            where_column1 = 'ItemName'
+#            update_column_1 = 'IntegerContent'
+#
+#        query = "UPDATE {tbl} SET {col}=? WHERE {cond}=?".\
+#                format(col=update_column_1,
+#                       tbl=table_name,
+#                       cond=where_column1)
+#        parameters = (item_value, item_name)
+#
+#        return self.execute_db_query(query, parameters)
 
-        return self.execute_db_query(query, parameters)
-
-    def read_text_from_db(self, table_name=None, item_name=None):
-
-        if table_name == 'TopAreaItems':
-            where_column1 = 'ItemName'
-            sel_column_1 = 'TextContent'
-
-        query = "SELECT {col} FROM {tbl} WHERE {cond}=?".\
-                format(col=sel_column_1,
-                       tbl=table_name,
-                       cond=where_column1)
-        parameters = (item_name,)
-
-        return self.execute_db_query(query, parameters)
-
-    def write_integer_to_db(self, table_name=None,
-                            item_name=None,
-                            item_value=None):
-
-        if table_name == 'TopAreaItems':
-            where_column1 = 'ItemName'
-            update_column_1 = 'IntegerContent'
-
-        query = "UPDATE {tbl} SET {col}=? WHERE {cond}=?".\
-                format(col=update_column_1,
-                       tbl=table_name,
-                       cond=where_column1)
-        parameters = (item_value, item_name)
-
-        return self.execute_db_query(query, parameters)
-
-    def write_text_to_db(self, table_name=None,
-                         item_name=None,
-                         item_value=None):
-
-        if table_name == 'TopAreaItems':
-            where_column1 = 'ItemName'
-            update_column_1 = 'TextContent'
-
-        query = "UPDATE {tbl} SET {col}=? WHERE {cond}=?".\
-                format(col=update_column_1,
-                       tbl=table_name,
-                       cond=where_column1)
-        parameters = (item_value, item_name)
-
-        return self.execute_db_query(query, parameters)
+#    def write_text_to_db(self, table_name=None,
+#                         item_name=None,
+#                         item_value=None):
+#
+#        if table_name == 'TopAreaItems':
+#            where_column1 = 'ItemName'
+#            update_column_1 = 'TextContent'
+#
+#        query = "UPDATE {tbl} SET {col}=? WHERE {cond}=?".\
+#                format(col=update_column_1,
+#                       tbl=table_name,
+#                       cond=where_column1)
+#        parameters = (item_value, item_name)
+#
+#        return self.execute_db_query(query, parameters)
 
     def read_tooltip_from_db(self, table_name=None, item_name=None, language=1):
 
@@ -1772,36 +2958,71 @@ class Warchest():
         sel_column_1 = 'TooltipText'
         lang_column1 = 'LanguageID'
 
-        query = "SELECT {col} FROM {tbl} WHERE {cond}=? AND {lang}=?".\
+        qry = "SELECT {col} FROM {tbl} WHERE {cond}=? AND {lang}=?".\
                 format(col=sel_column_1,
                        tbl=table_name,
                        cond=where_column1,
                        lang=lang_column1)
         parameters = (item_name, language)
 
-        return self.execute_db_query(query, parameters)
+        # return self.execute_db_query(query, parameters)
+        return exec_qry(qry, parameters)
 
-    def set_x_and_y(self):
-        # Encode class labels
-        self.y = EncodeClassLabel(self.df['4'].values)
-        # Select features
-        self.X = self.df.iloc[:, [2, 3]].values
+    def set_x_and_y_old(self):
+
+        self.y = EncodeClassLabel(self.loaded_df['4'].values)
+        print(type(self.y))
+        print(self.y)
+
+        self.x = self.loaded_df.iloc[:, [2, 3]].values
+        print(type(self.x))
+        print(self.x)
+        print(type(self.loaded_df))
+
+    def set_model_classlabel(self):
+
+        if self.has_model_classlabel():
+
+            self.y = EncodeClassLabel(self.table.model.df[self.get_model_classlabel_index()].values)
+            print(type(self.y))
+            print(self.y)
+
+    def set_model_predictors(self):
+
+        self.x = self.table.model.df.iloc[:, [2, 3]].values
+        print(type(self.x))
+        print(self.x)
+        print(type(self.loaded_df))
 
     def on_run_dataset_menu_clicked(self):
-        self.set_x_and_y()
+
+        if not hasattr(self, 'loaded_df'):
+            messagebox.showwarning("Warning", "No dataset selected.")
+            return
+
+        self.set_model_classlabel()
+        self.set_model_predictors()
+
+    def on_run_dataset_menu_old_clicked(self):
+
+        if not hasattr(self, 'loaded_df'):
+            messagebox.showwarning("Warning", "No dataset selected.")
+            return
+
+        self.set_x_and_y_old()
 
         # ******************* Preprocess ****************************
 
         # Splitting data into training and test data
-        self.X_train, self.X_test, self.y_train, self.y_test = train_test_split(
-             self.X, self.y, test_size=0.3, random_state=0)
+        self.x_train, self.x_test, self.y_train, self.y_test = train_test_split(
+             self.x, self.y, test_size=0.3, random_state=0)
 
         # Standardize features
-        self.X_train_std, self.X_test_std = Scale(self.X_train, self.X_test, t="std")
+        self.x_train_std, self.x_test_std = Scale(self.x_train, self.x_test, t="std")
 
         # Combine data for plotting
-        self.X_combined_std = np.vstack((self.X_train_std, self.X_test_std))
-        self.X_combined = np.vstack((self.X_train, self.X_test))
+        self.x_combined_std = np.vstack((self.x_train_std, self.x_test_std))
+        self.x_combined = np.vstack((self.x_train, self.x_test))
         self.y_combined = np.hstack((self.y_train, self.y_test))
 
         # Whether or not need to plot decision regions
@@ -1810,11 +3031,11 @@ class Warchest():
         # ******************* Learning ****************************
         # Fit with Perceptron
         Automator("ClfPerceptron",
-                  self.X_train_std,
-                  self.X_test_std,
+                  self.x_train_std,
+                  self.x_test_std,
                   self.y_train,
                   self.y_test,
-                  self.X_combined_std,
+                  self.x_combined_std,
                   self.y_combined,
                   n_iter=40,
                   eta0=0.1,
@@ -1822,22 +3043,22 @@ class Warchest():
 
         # Fit with AdalineGD
         Automator("ClfAdalineGD",
-                  self.X_train_std,
-                  self.X_test_std,
+                  self.x_train_std,
+                  self.x_test_std,
                   self.y_train,
                   self.y_test,
-                  self.X_combined_std,
+                  self.x_combined_std,
                   self.y_combined,
                   n_iter=15,
                   eta0=0.01)
 
         # Fit with AdalineSGD
         Automator("ClfAdalineSGD",
-                  self.X_train_std,
-                  self.X_test_std,
+                  self.x_train_std,
+                  self.x_test_std,
                   self.y_train,
                   self.y_test,
-                  self.X_combined_std,
+                  self.x_combined_std,
                   self.y_combined,
                   n_iter=15,
                   eta0=0.01,
@@ -1853,11 +3074,11 @@ class Warchest():
         # default: ‘l2’
 
         Automator("ClfLogisticRegression",
-                  self.X_train_std,
-                  self.X_test_std,
+                  self.x_train_std,
+                  self.x_test_std,
                   self.y_train,
                   self.y_test,
-                  self.X_combined_std,
+                  self.x_combined_std,
                   self.y_combined,
                   C=1000.0,
                   penalty='l1',
@@ -1865,11 +3086,11 @@ class Warchest():
 
         # Fit with Linear Support Vector Machines
         Automator("ClfLinearSVM",
-                  self.X_train_std,
-                  self.X_test_std,
+                  self.x_train_std,
+                  self.x_test_std,
                   self.y_train,
                   self.y_test,
-                  self.X_combined_std,
+                  self.x_combined_std,
                   self.y_combined,
                   kernel='linear',
                   C=1.0,
@@ -1877,11 +3098,11 @@ class Warchest():
 
         # Fit with Kernel Support Vector Machines
         Automator("ClfKernelSVM",
-                  self.X_train_std,
-                  self.X_test_std,
+                  self.x_train_std,
+                  self.x_test_std,
                   self.y_train,
                   self.y_test,
-                  self.X_combined_std,
+                  self.x_combined_std,
                   self.y_combined,
                   kernel='rbf',
                   gamma=0.2,
@@ -1890,11 +3111,11 @@ class Warchest():
 
         # Fit with Decision Tree
         Automator("ClfDecisionTree",
-                  self.X_train,
-                  self.X_test,
+                  self.x_train,
+                  self.x_test,
                   self.y_train,
                   self.y_test,
-                  self.X_combined,
+                  self.x_combined,
                   self.y_combined,
                   criterion='entropy',
                   max_depth=3,
@@ -1902,11 +3123,11 @@ class Warchest():
 
         # Fit with Random Forest
         Automator("ClfRandomForest",
-                  self.X_train,
-                  self.X_test,
+                  self.x_train,
+                  self.x_test,
                   self.y_train,
                   self.y_test,
-                  self.X_combined,
+                  self.x_combined,
                   self.y_combined,
                   criterion='entropy',
                   n_estimators=10,
@@ -1915,15 +3136,101 @@ class Warchest():
         # Fit with K-nearest Neighbors
         # TODO: need to add feature selection via SBS
         Automator("ClfKNN",
-                  self.X_train_std,
-                  self.X_test_std,
+                  self.x_train_std,
+                  self.x_test_std,
                   self.y_train,
                   self.y_test,
-                  self.X_combined_std,
+                  self.x_combined_std,
                   self.y_combined,
                   n_neighbors=5,
                   p=2,
                   metric='minkowski')
+
+    def on_toggle_selected_transformations_menu_clicked(self):
+
+        try:
+            self.transformations_log_tree. \
+                item(self.transformations_log_tree.selection())['values'][0]
+        except IndexError as e:
+            messagebox.showwarning("Warning", "No transformation selected.")
+            return
+
+        self.toggle_selected_transformation()
+
+    def on_flag_all_transformations_menu_clicked(self):
+
+        self.tabs.select(3)
+        self.update_transformations_log_tab_widgets()
+
+        if len(self.transformations_log_list) == 0:
+            messagebox.showwarning("Warning", "No transformations available.")
+            return
+
+        self.flag_all_transformations()
+
+    def on_unflag_all_transformations_menu_clicked(self):
+
+        self.tabs.select(3)
+        self.update_transformations_log_tab_widgets()
+
+        if len(self.transformations_log_list) == 0:
+            messagebox.showwarning("Warning", "No transformations available.")
+            return
+
+        self.unflag_all_transformations()
+
+    def on_replicate_selected_transformations_menu_clicked(self):
+
+        try:
+            self.transformations_log_tree. \
+                item(self.transformations_log_tree.selection())['values'][0]
+        except IndexError as e:
+            messagebox.showwarning("Warning", "No transformation selected.")
+            return
+
+        self.replicate_selected_transformation()
+
+    def on_replicate_all_transformations_menu_clicked(self):
+
+        self.tabs.select(3)
+        self.update_transformations_log_tab_widgets()
+
+        if len(self.transformations_log_list) == 0:
+            messagebox.showwarning("Warning", "No transformations available.")
+            return
+
+        self.replicate_all_transformations()
+
+    def on_load_transformations_menu_clicked(self):
+
+        self.tabs.select(3)
+        self.update_transformations_log_tab_widgets()
+
+        if len(self.transformations_log_list) != 0:
+            if messagebox.askokcancel("Warning", "Current transformations will be deleted. Do you want to proceed?"):
+                self.load_transformations()
+        else:
+            self.load_transformations()
+        return
+
+    def on_save_transformations_menu_clicked(self):
+
+        self.tabs.select(3)
+        self.update_transformations_log_tab_widgets()
+
+        if len(self.transformations_log_list) == 0:
+            messagebox.showwarning("Warning", "No transformations available.")
+            return
+
+        self.save_transformations()
+
+    def on_ordinal_mappings_menu_clicked(self):
+
+        self.update_column_tab_widgets()  # update for selected column
+
+        OrdinalMapping(self.root,
+                       self.get_col_values(),
+                       self.get_feature_type(self.get_col_values()))
 
     def turn_progressbar_on(self, progressbar, progressbar_label):
 
@@ -1954,6 +3261,17 @@ class Warchest():
             widget.insert(tk.END, string)
             widget.configure(state='disabled')
 
+    def color_disabled_widget(self, widget, clr):
+
+        if isinstance(widget, tk.Entry):
+            widget.configure(state='normal')
+            widget.configure(background=clr)
+            widget.configure(state='readonly')
+        elif isinstance(widget, tk.Text):
+            widget.configure(state='normal')
+            widget.configure(background=clr)
+            widget.configure(state='disabled')
+
     def update_column_tab_dict(self, widget, value):
 
         widget_name = str(widget).split(".")[-1]
@@ -1966,20 +3284,332 @@ class Warchest():
         self.column_tab_dict[widget_name] = [value, label_text]
         # self.column_tab_tuples_list.append(tuple([widget_name, value]))
 
-    def reset_db_fields(self):
+#    def reset_db_fields(self):
+#
+#        # reset selected_column
+#        self.write_integer_to_db(table_name='TopAreaItems',
+#                                 item_name='selected_column',
+#                                 item_value=0)
+#        self.write_text_to_db(table_name='TopAreaItems',
+#                              item_name='selected_column_name',
+#                              item_value='')
 
-        # reset selected_column
-        self.write_integer_to_db(table_name='TopAreaItems',
-                                 item_name='selected_column',
-                                 item_value=0)
-        self.write_text_to_db(table_name='TopAreaItems',
-                              item_name='selected_column_name',
-                              item_value='')
+    def handle_transformations_log_double_click(self, event):
+
+        if len(self.transformations_log_list) == 0:
+            return
+
+        self.toggle_selected_transformation()
+
+    def toggle_selected_transformation(self):
+
+        trans_id = self.transformations_log_tree. \
+            item(self.transformations_log_tree.selection())['values'][3]
+        trans = Transformation()
+
+        if (self.transformations_log_tree.
+            item(self.transformations_log_tree.selection())['values'][4]
+                == "Yes"):
+
+            trans.toggle_selected("No", trans_id)
+
+        elif (self.transformations_log_tree.
+              item(self.transformations_log_tree.selection())['values'][4]
+              == "No"):
+
+            trans.toggle_selected("Yes", trans_id)
+
+        self.update_transformations_log_tab_widgets()
+        return
+
+    def flag_all_transformations(self):
+
+        for item in self.transformations_log_tree.get_children():
+            iid = item
+
+        self.transformations_log_tree.selection_set(iid)
+
+        session_id = self.transformations_log_tree. \
+            item(self.transformations_log_tree.selection())['values'][2]
+        trans = Transformation()
+
+        trans.flag_all(session_id)
+
+        self.update_transformations_log_tab_widgets()
+        return
+
+    def unflag_all_transformations(self):
+
+        for item in self.transformations_log_tree.get_children():
+            iid = item
+
+        self.transformations_log_tree.selection_set(iid)
+
+        session_id = self.transformations_log_tree. \
+            item(self.transformations_log_tree.selection())['values'][2]
+        trans = Transformation()
+
+        trans.unflag_all(session_id)
+
+        self.update_transformations_log_tab_widgets()
+        return
+
+    def replicate_selected_transformation(self):
+
+        trans_id = self.transformations_log_tree. \
+            item(self.transformations_log_tree.selection())['values'][3]
+
+        trans = Transformation()
+
+        if (self.transformations_log_tree.
+            item(self.transformations_log_tree.selection())['values'][4]
+                == "Yes"):
+
+            lst = [element for element in self.transformations_log_list
+                   if element['TransformationLogID'] == trans_id]
+
+            trans.replicate(lst, self.table.model.df)
+            self.table.redraw()
+
+        elif (self.transformations_log_tree.
+              item(self.transformations_log_tree.selection())['values'][4]
+              == "No"):
+
+            messagebox.showwarning("Warning", "Flagged for no replication.")
+
+        return
+
+    def replicate_all_transformations(self):
+
+        lst = [element for element in self.transformations_log_list
+               if element['IsReplicate'] == 'Yes']
+
+        trans = Transformation()
+
+        trans.replicate(lst, self.table.model.df)
+        self.table.redraw()
+        return
+
+    def load_transformations(self):
+
+        trans = Transformation()
+
+        for item in self.transformations_log_tree.get_children():
+            self.transformations_log_tree.delete(item)
+        trans.delete_transformations_by_session(self.session_id)
+
+        file_name = filedialog.askopenfilename(
+            filetypes=[('Warchest Transformations File', '*.wct')],
+            title='Load file...',
+            initialdir=self.trans_path)
+
+        if (file_name is None) or (file_name == ''):
+            return
+        file_obj = open(file_name, "rb")
+
+        try:
+            self.transformations_log_list = pickle.load(file_obj)
+        except EOFError:
+            messagebox.showerror("Error",
+                                 "Warchest Transformations file corrupted")
+        file_obj.close()
+
+        for transformation in self.transformations_log_list:
+
+            index = transformation.get('ColumnIndex')
+            name = transformation.get('ColumnName')
+            transform = transformation.get('TransformationDesc')
+            dtype = transformation.get('DType')
+
+            if transform == 'setColumnType':
+                trans.add_transformation(session=self.session_id,
+                                         index=index,
+                                         name=name,
+                                         transformation=transform,
+                                         dtype=dtype)
+
+        self.update_transformations_log_tab_widgets()
+
+    def save_transformations(self):
+
+        lst = [element for element in self.transformations_log_list
+               if element['IsReplicate'] == 'Yes']
+        for trans in lst:
+            session_file = trans.get('SessionDesc')
+            date_file = trans.get('DateCreated')
+            break
+
+        date_ = (date_file[0:13] + date_file[14:16]).replace(" ", "-", 1)
+
+        file_name = filedialog.asksaveasfilename(
+            filetypes=[('Warchest Transformations File', '*.wct')],
+            title="Save file as...",
+            initialdir=self.trans_path,
+            initialfile=session_file + '-' + str(date_),
+            defaultextension='.wct')
+
+        if (file_name is None) or (file_name == ''):
+            return
+        pickle.dump(self.transformations_log_list, open(file_name, "wb"))
+
+    def update_model_option_available_to_model(self, var):
+
+        modelopt = ModelOption()
+        modelopt.update_model_option('available_to_model_dict', var)
+
+    def update_model_option_class_label_status(self, var):
+
+        modelopt = ModelOption()
+        modelopt.update_model_option('class_label_status_dict', var)
+
+    def update_model_option_nominal_ordinal(self, var):
+
+        modelopt = ModelOption()
+        modelopt.update_model_option('nominal_ordinal_dict', var)
+
+    def update_model_option_model_columns(self, var):
+
+        modelopt = ModelOption()
+        modelopt.update_model_option('model_columns_dict', var)
+
+    def get_model_option_x(self, option):
+
+        modelopt = ModelOption()
+        return {int(k): v for k, v in modelopt.get_model_option(option).items()}
+
+    def update_model_columns(self):
+
+        self.available_to_model = self. \
+            get_model_option_x('available_to_model_dict')
+        self.class_label_status = self. \
+            get_model_option_x('class_label_status_dict')
+        self.nominal_ordinal = self. \
+            get_model_option_x('nominal_ordinal_dict')
+        self.model_columns = self. \
+            get_model_option_x('model_columns_dict')
+#        print('\navailable_to_model')
+#        print(self.available_to_model)
+#        print('class_label_status')
+#        print(self.class_label_status)
+#        print('nominal_ordinal')
+#        print(self.nominal_ordinal)
+
+        for index, column in enumerate(self.table.model.df.columns):
+
+            f_type = self.get_feature_type(self.get_col_values_by_col(index))
+
+            if self.available_to_model[index] == 'No':
+                self.model_columns[index] = 'No'
+            else:
+                if f_type == 'numerical':
+                    if self.class_label_status[index] == 'Yes':
+                        self.model_columns[index] = 'Class (numerical)'
+                    else:
+                        self.model_columns[index] = 'Yes (numerical)'
+                elif f_type == 'datetime':
+                    if self.class_label_status[index] == 'Yes':
+                        self.model_columns[index] = 'Class (datetime)'
+                    else:
+                        self.model_columns[index] = 'Yes (datetime)'
+                elif f_type == 'boolean':
+                    if self.class_label_status[index] == 'Yes':
+                        self.model_columns[index] = 'Class (boolean)'
+                    else:
+                        self.model_columns[index] = 'Yes (boolean)'
+                elif (f_type == 'nominal or ordinal') or \
+                        (f_type == 'categorical/factor'):
+                    if self.class_label_status[index] == 'Yes':
+                        if self.nominal_ordinal[index] == 'nominal':
+                            self.model_columns[index] = 'Class (nominal)'
+                    else:
+                        if self.nominal_ordinal[index] == 'nominal':
+                            self.model_columns[index] = 'Yes (nominal)'
+                        else:
+                            self.model_columns[index] = 'Yes (ordinal)'
+
+        self.update_model_option_model_columns(self.model_columns)
+        print('model_columns')
+        print(self.model_columns)
+
+    def get_model_column_names_by_feature(self, feature):
+
+        lst = []
+        string = ""
+        for k, v in self.model_columns.items():
+
+            if (v == feature):
+                lst.append("[" + self.get_col_name_by_index(k) + "]")
+
+        if len(lst) > 0:
+            for i, row in enumerate(lst):
+                string = string + str(lst[i]) + '\n'
+        else:
+            string = "N/A"
+
+        return string
+
+    def has_model_classlabel(self):
+
+        for k, v in self.model_columns.items():
+
+            if (v == "Class (numerical)") or \
+               (v == "Class (datetime)") or \
+               (v == "Class (boolean)") or \
+               (v == "Class (nominal)"):
+
+                return True
+        return False
+
+    def get_model_classlabel_index(self):
+
+        for k, v in self.model_columns.items():
+
+            if (v == "Class (numerical)") or \
+               (v == "Class (datetime)") or \
+               (v == "Class (boolean)") or \
+               (v == "Class (nominal)"):
+
+                return str(k)
+
+    def apply_column_color(self, index, clr):
+
+        self.table.columncolors[self.table.model.df.columns[index]] = clr
+        self.table.redraw()
+
+#    def check_db_in_thread(self):
+#
+#        self.queue = Queue()
+#
+#        self.thread = Thread(target=self.describe_column)
+#        #threading.Timer(0.01,task).start()
+#
+#        self.queue.put(self.thread)
+#
+#        self.thread.start()
+
+    def describe_column(self):
+
+        self.update_column_tab_widgets()
+#        self.queue.get()
+#
+#        while True:
+#
+#            time.sleep(0.5)
+#
+#            for row in self.read_integer_from_db(table_name='TopAreaItems',
+#                                                 item_name='selected_column'):
+#                selected_column = row[0]
+#
+#            if self.selected_column != selected_column:
+#                self.update_column_tab_widgets()
+#
+#        self.queue.task_done()
 
     def exit_app(self):
         # self.keep_playing = False
         if messagebox.askokcancel("Quit", "Really quit?"):
-            self.reset_db_fields()
+            #self.thread.cancel()
+#            self.reset_db_fields()
             self.root.destroy()
 
     def show_about(self):
