@@ -17,16 +17,16 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
-# from load_datasets import load_dataset
 from toolbox import write_to_console, is_even, exec_qry
 import numpy as np
 import pandas as pd
 import os.path
-import sqlite3
+# import sqlite3
 import pickle
-from threading import Thread
-from queue import Queue
-import time
+# from threading import Thread
+# from queue import Queue
+# import time
+from datetime import datetime
 from sklearn.model_selection import train_test_split
 from preprocessing import EncodeClassLabel, Scale
 from insights import ColumnInsight
@@ -85,6 +85,7 @@ class Warchest():
         self.absolute_path = os.path.dirname(os.path.abspath(__file__))
         self.datasets_path = os.path.join(self.absolute_path, 'datasets')
         self.trans_path = os.path.join(self.absolute_path, 'transformations')
+        self.model_columns_path = os.path.join(self.absolute_path, 'modelcolumns')
         #print(self.absolute_path)
         #print(os.path.join(self.absolute_path, self.db_filename))
 #        print(os.path.abspath(__file__))
@@ -135,24 +136,30 @@ class Warchest():
 
         self.menu_bar = tk.Menu(self.root)
 
-        # dataset_menu
-        self.dataset_menu = tk.Menu(self.menu_bar, tearoff=0,
-                                    activebackground="#A2A2A2",
-                                    activeforeground="black")
-        self.dataset_menu.add_command(
+        # model_menu
+        self.model_menu = tk.Menu(self.menu_bar, tearoff=0,
+                                  activebackground="#A2A2A2",
+                                  activeforeground="black")
+        self.model_menu.add_command(
             label="Select Dataset",
             command=self.on_select_dataset_menu_clicked)
-        self.dataset_menu.add_command(
+        self.model_menu.add_command(
             label="Load Dataset", command=self.on_load_dataset_menu_clicked)
-        self.dataset_menu.add_command(
+        self.model_menu.add_command(
             label="Run Dataset (OLD)", command=self.on_run_dataset_menu_old_clicked)
-        self.dataset_menu.add_command(
-            label="Run Dataset", command=self.on_run_dataset_menu_clicked)
+        self.model_menu.add_separator()
+        self.model_menu.add_command(
+            label="Load Model Columns", command=self.on_load_model_columns_menu_clicked)
+        self.model_menu.add_command(
+            label="Save Model Columns", command=self.on_save_model_columns_menu_clicked)
+        self.model_menu.add_separator()
+        self.model_menu.add_command(
+            label="Model Dataset", command=self.on_model_dataset_menu_clicked)
 #        self.file_menu.add_command(
 #            label="Save Project", command=self.save_project)
-        self.dataset_menu.add_separator()
-        self.dataset_menu.add_command(label="Exit", command=self.exit_app)
-        self.menu_bar.add_cascade(label="Datasets", menu=self.dataset_menu)
+        self.model_menu.add_separator()
+        self.model_menu.add_command(label="Exit", command=self.exit_app)
+        self.menu_bar.add_cascade(label="Model", menu=self.model_menu)
 
         # transformations_menu
         self.transformations_menu = tk.Menu(self.menu_bar, tearoff=0,
@@ -182,6 +189,10 @@ class Warchest():
         self.transformations_menu.add_command(
                 label="Save Transformations",
                 command=self.on_save_transformations_menu_clicked)
+        self.transformations_menu.add_separator()
+        self.transformations_menu.add_command(
+                label="Clear All",
+                command=self.on_clear_all_transformations_menu_clicked)
         self.menu_bar.add_cascade(label="Transformations",
                                   menu=self.transformations_menu)
 
@@ -2060,7 +2071,9 @@ class Warchest():
                 'DateCreated': row[7],
                 'TransformationLogDesc': row[8],
                 'IsReplicate': row[9],
-                'DType': row[10]
+                'Option1': row[10],
+                'Option2': row[11],
+                'Option3': row[12]
             }
             for row in trans.get_transformations_by_session(self.session_id)]
           #  for k in range(MAX_NUMBER_OF_PATTERNS)]
@@ -2977,26 +2990,27 @@ class Warchest():
         self.x = self.loaded_df.iloc[:, [2, 3]].values
         print(type(self.x))
         print(self.x)
-        print(type(self.loaded_df))
+        #print(type(self.loaded_df))
 
     def set_model_classlabel(self):
 
         if self.has_model_classlabel():
+            self.y = self.table.model.df[self.get_model_classlabel_index()].values
+        else:
+            self.y = np.empty(0)
 
-            self.y = EncodeClassLabel(self.table.model.df[self.get_model_classlabel_index()].values)
-            print(type(self.y))
-            print(self.y)
+        print(type(self.y))
+        print(self.y)
 
     def set_model_predictors(self):
 
-        self.x = self.table.model.df.iloc[:, [2, 3]].values
+        self.x = self.table.model.df.iloc[:, self.get_predictors_from_model_columns()].values
         print(type(self.x))
         print(self.x)
-        print(type(self.loaded_df))
 
-    def on_run_dataset_menu_clicked(self):
+    def on_model_dataset_menu_clicked(self):
 
-        if not hasattr(self, 'loaded_df'):
+        if not hasattr(self, 'table'):
             messagebox.showwarning("Warning", "No dataset selected.")
             return
 
@@ -3224,6 +3238,37 @@ class Warchest():
 
         self.save_transformations()
 
+    def on_clear_all_transformations_menu_clicked(self):
+
+        self.tabs.select(3)
+        self.update_transformations_log_tab_widgets()
+
+        if len(self.transformations_log_list) != 0:
+            if messagebox.askokcancel("Warning", "Current transformations will be deleted. Do you want to proceed?"):
+                self.clear_all_transformations()
+        else:
+            self.clear_all_transformations()
+        return
+
+    def on_load_model_columns_menu_clicked(self):
+
+        if (self.has_model_classlabel() or
+                len(self.get_predictors_from_model_columns()) != 0):
+            if messagebox.askokcancel("Warning", "Current model columns selection will be deleted. Do you want to proceed?"):
+                self.load_model_columns()
+        else:
+            self.load_model_columns()
+        return
+
+    def on_save_model_columns_menu_clicked(self):
+
+        if (self.has_model_classlabel() == False and
+                len(self.get_predictors_from_model_columns()) == 0):
+            messagebox.showwarning("Warning", "No model columns selection available.")
+            return
+
+        self.save_model_columns()
+
     def on_ordinal_mappings_menu_clicked(self):
 
         self.update_column_tab_widgets()  # update for selected column
@@ -3411,7 +3456,7 @@ class Warchest():
             self.transformations_log_list = pickle.load(file_obj)
         except EOFError:
             messagebox.showerror("Error",
-                                 "Warchest Transformations file corrupted")
+                                 "Warchest Transformations File corrupted")
         file_obj.close()
 
         for transformation in self.transformations_log_list:
@@ -3419,14 +3464,25 @@ class Warchest():
             index = transformation.get('ColumnIndex')
             name = transformation.get('ColumnName')
             transform = transformation.get('TransformationDesc')
-            dtype = transformation.get('DType')
+            option1 = transformation.get('Option1')
+            option2 = transformation.get('Option2')
+            option3 = transformation.get('Option3')
 
             if transform == 'setColumnType':
                 trans.add_transformation(session=self.session_id,
                                          index=index,
                                          name=name,
                                          transformation=transform,
-                                         dtype=dtype)
+                                         option1=option1)
+
+            if transform == 'createCategorical':
+                trans.add_transformation(session=self.session_id,
+                                         index=index,
+                                         name=name,
+                                         transformation=transform,
+                                         option1=option1,
+                                         option2=option2,
+                                         option3=option3)
 
         self.update_transformations_log_tab_widgets()
 
@@ -3451,6 +3507,61 @@ class Warchest():
         if (file_name is None) or (file_name == ''):
             return
         pickle.dump(self.transformations_log_list, open(file_name, "wb"))
+
+    def clear_all_transformations(self):
+
+        trans = Transformation()
+
+        for item in self.transformations_log_tree.get_children():
+            self.transformations_log_tree.delete(item)
+        trans.delete_transformations_by_session(self.session_id)
+
+    def load_model_columns(self):
+
+        file_name = filedialog.askopenfilename(
+            filetypes=[('Warchest Model Columns File', '*.wcc')],
+            title='Load file...',
+            initialdir=self.model_columns_path)
+
+        if (file_name is None) or (file_name == ''):
+            return
+        file_obj = open(file_name, "rb")
+
+        try:
+            self.available_to_model, self.class_label_status, self.nominal_ordinal, self.model_columns = pickle.load(file_obj)
+            print(self.model_columns)
+            print(type(self.model_columns))
+        except EOFError:
+            messagebox.showerror("Error",
+                                 "Warchest Model Columns File corrupted")
+        file_obj.close()
+
+        self.update_model_option_available_to_model(self.available_to_model)
+        self.update_model_option_class_label_status(self.class_label_status)
+        self.update_model_option_nominal_ordinal(self.nominal_ordinal)
+        self.update_model_option_model_columns(self.model_columns)
+        self.update_column_tab_widgets()
+
+    def save_model_columns(self):
+
+        session_file = self.selected_dataset
+        date_file = str(datetime.now())
+
+        date_ = (date_file[0:13] + date_file[14:16]).replace(" ", "-", 1)
+
+        file_name = filedialog.asksaveasfilename(
+            filetypes=[('Warchest Model Columns File', '*.wcc')],
+            title="Save file as...",
+            initialdir=self.model_columns_path,
+            initialfile=session_file + '-' + str(date_),
+            defaultextension='.wcc')
+
+        if (file_name is None) or (file_name == ''):
+            return
+        pickle.dump((self.available_to_model,
+                     self.class_label_status,
+                     self.nominal_ordinal,
+                     self.model_columns), open(file_name, "wb"))
 
     def update_model_option_available_to_model(self, var):
 
@@ -3570,6 +3681,20 @@ class Warchest():
                (v == "Class (nominal)"):
 
                 return str(k)
+
+    def get_predictors_from_model_columns(self):
+
+        lst = []
+        for k, v in self.model_columns.items():
+            if (v != 'No'):
+                if (v == "Class (numerical)") or \
+                   (v == "Class (datetime)") or \
+                   (v == "Class (boolean)") or \
+                   (v == "Class (nominal)"):
+                    pass
+                else:
+                    lst.append(k)
+        return lst
 
     def apply_column_color(self, index, clr):
 
