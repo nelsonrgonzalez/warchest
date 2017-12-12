@@ -6,6 +6,8 @@
     Created Jan 2014
     Copyright (C) Damien Farrell
 
+    *** Modified by Nelson R Gonzalez, when noted by [NG] ***
+
     This program is free software; you can redistribute it and/or
     modify it under the terms of the GNU General Public License
     as published by the Free Software Foundation; either version 2
@@ -227,8 +229,6 @@ class TableModel(object):
         self.available_to_model[max(list(self.available_to_model)) + 1] = 'No'
         self.class_label_status[max(list(self.class_label_status)) + 1] = 'No'
         self.nominal_ordinal[max(list(self.nominal_ordinal)) + 1] = 'nominal'
-#        print(self.df.columns)
-#        print(colname)
 
         print(self.available_to_model)
 
@@ -373,10 +373,6 @@ class TableModel(object):
         except Exception as e:
             print (e)
         self.df.iloc[rowindex,colindex] = value
-        #print('\nType value after: {}'.format(type(value)))
-        #print('\nType entire series before: {}'.format(dtype))
-        #dtype2 = self.df.dtypes[colindex]
-        #print('\nType entire series after: {}'.format(dtype2))
 
         # [NG] this code below forces the entire column to its original
         # [NG] type since pandas would force to object or another type
@@ -387,12 +383,8 @@ class TableModel(object):
                 dtype == "uint16" or dtype == "uint32" or dtype == "uint64" or
                 dtype == "float"):
             df = self.df
-            #self.df[colindex] = df[colindex].convert_objects(convert_numeric='force')
-            #print(self.df.iloc[:, colindex])
-            #print(df.iloc[:, colindex])
+
             self.df.iloc[:, colindex] = pd.to_numeric(df.iloc[:, colindex])
-            #print('\nType entire series after force convert: {}'.format(self.df.dtypes[colindex]))
-        #pd.to_numeric(s)
 
         return
 
