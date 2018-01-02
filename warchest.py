@@ -21,17 +21,17 @@ from toolbox import write_to_console, is_even, exec_qry
 import numpy as np
 import pandas as pd
 import os.path
-# import sqlite3
 import pickle
-# from threading import Thread
-# from queue import Queue
-# import time
 from datetime import datetime
 from sklearn.model_selection import train_test_split
 from preprocessing import EncodeClassLabel, Scale
 from insights import ColumnInsight
 from ordinalmaps import OrdinalMapping
+from toolsdialogs import ClassifiersCRUD, ClassifiersModelDefaults
+from toolsdialogs import TrainAndTestSplitDefaults, ScalingDefaults
 from datasets import Dataset
+from models import Model
+from modeltasks import ModelTask
 from sessions import Session
 from transformations import Transformation
 from modeloptions import ModelOption
@@ -41,7 +41,6 @@ import tkinter as tk
 from tkinter import ttk
 from tkinter import messagebox, filedialog
 import Pmw
-# from pandastablerev import Table
 from wcpandastable.core import Table
 
 APP_NAME = "Warchest"
@@ -86,24 +85,15 @@ class Warchest():
         self.datasets_path = os.path.join(self.absolute_path, 'datasets')
         self.trans_path = os.path.join(self.absolute_path, 'transformations')
         self.model_columns_path = os.path.join(self.absolute_path, 'modelcolumns')
-        #print(self.absolute_path)
-        #print(os.path.join(self.absolute_path, self.db_filename))
-#        print(os.path.abspath(__file__))
-#        print(os.path.dirname(os.path.abspath(__file__)))
-#        print(os.path.join(os.path.dirname(__file__)))
         self.create_gui()
 
     def create_gui(self):
         self.create_top_menu()
         self.create_top_area()
         self.create_dataframe_area()
-        # self.create_context_menu()
 
     def setup_app_styles(self):
 
-        #import tkinter.font
-#        print(self.column_tab.winfo_class())
-#        self.tabs_style.configure('TNotebook', background='white')
         self.app_style = ttk.Style()
         self.app_style.configure('Tabs.TFrame', background='white')
         self.app_style.configure('Tabs.TLabel', background='white')
@@ -111,24 +101,11 @@ class Warchest():
                                  font=('Arial', '8', 'bold'),
                                  foreground='grey25')
 
-
-        #print(type(self.app_style.lookup('TEntry', 'font')))
-        #print(tkinter.font.families())
-        #print(self.app_style.element_options('Treeview.Heading'))
-        #self.app_style.configure('Tabs.TEntry', background='white')
-        #self.app_style.map('Tabs.TEntry', background = [('readonly', 'white')])
-
-        # print(self.app_style.layout('Tabs.TEntry'))
-        # print(self.app_style.lookup('Tabs.TEntry', 'background'))
-
     def set_app_size(self):
-        # width = self.root.winfo_screenwidth()/1.4
-        # height = self.root.winfo_screenheight()*0.7
         width = 1371
         height = 756
         x_offset = (self.root.winfo_screenwidth()/2)-(width/2)
         y_offset = (self.root.winfo_screenheight()/2)-(height/2)
-        # print('%dx%d+%d+%d' % (width, height, x_offset, y_offset))
         self.root.geometry('%dx%d+%d+%d' % (width, height, x_offset, y_offset))
         return
 
@@ -155,8 +132,6 @@ class Warchest():
         self.model_menu.add_separator()
         self.model_menu.add_command(
             label="Model Dataset", command=self.on_model_dataset_menu_clicked)
-#        self.file_menu.add_command(
-#            label="Save Project", command=self.save_project)
         self.model_menu.add_separator()
         self.model_menu.add_command(label="Exit", command=self.exit_app)
         self.menu_bar.add_cascade(label="Model", menu=self.model_menu)
@@ -206,6 +181,39 @@ class Warchest():
         self.menu_bar.add_cascade(label="Tools",
                                   menu=self.tools_menu)
 
+        # algorithms_menu (under tools_menu)
+        self.algorithms_menu = tk.Menu(self.tools_menu, tearoff=0,
+                                       activebackground="#A2A2A2",
+                                       activeforeground="black")
+        self.algorithms_menu.add_command(
+                label="Classifiers",
+                command=self.on_classifiers_menu_clicked)
+        self.tools_menu.add_cascade(label="Algorithms",
+                                      menu=self.algorithms_menu)
+
+        # settings_menu (under tools_menu)
+        self.settings_menu = tk.Menu(self.tools_menu, tearoff=0,
+                                           activebackground="#A2A2A2",
+                                           activeforeground="black")
+        self.tools_menu.add_cascade(label="Settings",
+                                      menu=self.settings_menu)
+
+        # model_defaults_menu (under settings_menu)
+        self.model_defaults_menu = tk.Menu(self.settings_menu, tearoff=0,
+                                           activebackground="#A2A2A2",
+                                           activeforeground="black")
+        self.model_defaults_menu.add_command(
+                label="Classifiers",
+                command=self.on_default_classifiers_menu_clicked)
+        self.model_defaults_menu.add_command(
+                label="Train and Test Splits",
+                command=self.on_default_train_and_test_split_menu_clicked)
+        self.model_defaults_menu.add_command(
+                label="Scaling",
+                command=self.on_default_scaling_menu_clicked)
+        self.settings_menu.add_cascade(label="Model Defaults",
+                                       menu=self.model_defaults_menu)
+
         # about_menu
         self.about_menu = tk.Menu(self.menu_bar, tearoff=0,
                                   activebackground="#A2A2A2",
@@ -224,15 +232,14 @@ class Warchest():
 
         self.dataframe_area = tk.Frame(self.root, bg="white")
         self.dataframe_area.pack(fill='both', expand=1)
-#        self.dataframe_area = tk.Canvas(self.root, bg='white', relief='groove',
-#                                        width = 640, height = 480,
-#                                        scrollregion=(0,0,640,480))
-#        self.dataframe_area.grid(row=0, column=0, sticky="nsew", padx=1, pady=1)
-#        self.dataframe_area.bind('<1>', self.on_dataframe_area_click)
-        #self.dataframe_area.config(width = 640, height = 480)
-        #ttk.Button(self.dataframe_area, text='Click Me').grid()
-#        vb = self.root.geometry()
-#        print(vb)
+
+    def create_top_area_items(self):
+
+        self.create_tabs()
+        self.create_column_tab_widgets()
+        self.create_table_tab_widgets()
+        self.create_insights_tab_widgets()
+        self.create_transformations_log_tab_widgets()
 
     def create_tabs(self):
 
@@ -266,32 +273,10 @@ class Warchest():
 
     def clean_top_area_items(self):
 
-        # print(self.tabs.winfo_exists())
-
-#        self.reset_db_fields()
-
         if hasattr(self, 'tabs'):
             self.tabs.destroy()
 
-    def create_top_area_items(self):
-
-        self.create_tabs()
-        self.create_column_tab_widgets()
-        self.create_table_tab_widgets()
-        self.create_insights_tab_widgets()
-        self.create_transformations_log_tab_widgets()
-
     def create_column_tab_widgets(self):
-
-        # describe_column_button
-#        self.describe_column_button = \
-#            ttk.Button(self.column_tab,
-#                       text="Describe Column",
-#                       name="describe_column_button",
-#                       command=self.on_describe_column_button_clicked)
-#        self.describe_column_button.grid(row=0, column=0, sticky="nsew",
-#                                         padx=1, pady=1)
-#        self.add_tooltip_to_widget(self.describe_column_button)
 
         # analyze_column_button
         self.analyze_column_button = \
@@ -1857,7 +1842,6 @@ class Warchest():
     def on_describe_column_button_clicked(self):
 
         pass
-#        self.update_column_tab_widgets()
 
     def on_analyze_column_button_clicked(self):
 
@@ -1867,7 +1851,6 @@ class Warchest():
         insight.reset_insights()
 
         is_missing = insight.missing_values()
-        #print('\nMissing values: {}'.format(is_missing))
         if is_missing is False:
             insight.memory_usage()
 
@@ -1877,16 +1860,6 @@ class Warchest():
 
         self.available_to_model = self. \
             get_model_option_x('available_to_model_dict')
-
-#        #self.update_column_tab_widgets()
-#        for row in self.read_integer_from_db(table_name='TopAreaItems',
-#                                             item_name='selected_column'):
-#            selected_column = row[0]
-#
-#        if self.available_to_model[selected_column] == 'No':
-#            self.available_to_model[selected_column] = 'Yes'
-#        else:
-#            self.available_to_model[selected_column] = 'No'
 
         if self.available_to_model[self.selected_column] == 'No':
             self.available_to_model[self.selected_column] = 'Yes'
@@ -1900,20 +1873,6 @@ class Warchest():
 
         self.class_label_status = self. \
             get_model_option_x('class_label_status_dict')
-
-#        #self.update_column_tab_widgets()
-#        for row in self.read_integer_from_db(table_name='TopAreaItems',
-#                                             item_name='selected_column'):
-#            selected_column = row[0]
-
-#        if self.class_label_status[selected_column] == 'No':
-#
-#            for i in range(len(self.table.model.df.columns)):
-#                self.class_label_status[i] = 'No'
-#            self.class_label_status[selected_column] = 'Yes'
-#
-#        else:
-#            self.class_label_status[selected_column] = 'No'
 
         if self.class_label_status[self.selected_column] == 'No':
 
@@ -1931,23 +1890,12 @@ class Warchest():
 
         self.nominal_ordinal = self.get_model_option_x('nominal_ordinal_dict')
 
-#        #self.update_column_tab_widgets()
-#        for row in self.read_integer_from_db(table_name='TopAreaItems',
-#                                             item_name='selected_column'):
-#            selected_column = row[0]
-
-#        if self.nominal_ordinal[selected_column] == 'nominal':
-#            self.nominal_ordinal[selected_column] = 'ordinal'
-#        else:
-#            self.nominal_ordinal[selected_column] = 'nominal'
-
         if self.nominal_ordinal[self.selected_column] == 'nominal':
             self.nominal_ordinal[self.selected_column] = 'ordinal'
         else:
             self.nominal_ordinal[self.selected_column] = 'nominal'
 
         self.update_model_option_nominal_ordinal(self.nominal_ordinal)
-        #self.update_model_columns()
         self.update_column_tab_widgets()
 
     def on_ordinal_mappings_button_clicked(self):
@@ -2076,15 +2024,8 @@ class Warchest():
                 'Option3': row[12]
             }
             for row in trans.get_transformations_by_session(self.session_id)]
-          #  for k in range(MAX_NUMBER_OF_PATTERNS)]
 
         for i, row in enumerate(trans.get_transformations_by_session(self.session_id)):
-
-#            print(row[8])
-#            print(row[2])
-#            print(row[7])
-#            print(row[1])
-#            print(row[0])
 
             if is_even(i):
                 self.transformations_log_tree.insert('', 0, text=row[8],
@@ -2099,34 +2040,20 @@ class Warchest():
                                                      row[9]),
                                                      tags=('odd_row',))
 
-        #print(self.transformations_log_list)
-
-
     # BEGIN COLUMN TAB WIDGETS #
 
     # General Information --------------------------------
     def update_selected_column_name_entry(self):
 
-#        for row in self.read_text_from_db(table_name='TopAreaItems',
-#                                          item_name='selected_column_name'):
-#            if row[0] != '':  # if there's somwething in the DB
-#                self.selected_column_name = row[0]
         string = str(self.selected_column_name)
         self.update_disabled_widget(self.selected_column_name_entry, string)
         self.update_column_tab_dict(self.selected_column_name_entry, string)
 
     def update_selected_column_entry(self):
 
-#        for row in self.read_integer_from_db(table_name='TopAreaItems',
-#                                             item_name='selected_column'):
-#            self.selected_column = row[0]
         string = str(self.selected_column)
         self.update_disabled_widget(self.selected_column_entry, string)
         self.update_column_tab_dict(self.selected_column_entry, string)
-
-        # print(self.selected_column_entry.get())
-        # print(self.selected_column_entry['state'])
-        # print(self.selected_column_entry['style'])
 
     def update_feature_type_entry(self):
 
@@ -2135,17 +2062,6 @@ class Warchest():
         self.update_column_tab_dict(self.feature_type_entry, string)
 
     def update_available_to_model_entry(self):
-
-#        self.available_to_model = self. \
-#            get_model_option_x('available_to_model_dict')
-#        self.class_label_status = self. \
-#            get_model_option_x('class_label_status_dict')
-#        self.nominal_ordinal = self. \
-#            get_model_option_x('nominal_ordinal_dict')
-#        self.available_to_model_final = self. \
-#            get_model_option_x('available_to_model_final_dict')
-#        self.available_to_model_final = self. \
-#            get_model_option_x('available_to_model_final_dict')
 
         self.update_model_columns()
 
@@ -2156,63 +2072,42 @@ class Warchest():
             string = 'No'
             self.available_to_model_entry. \
                 configure(readonlybackground=CELL_CLR_NORMAL)
-#            self.apply_column_color(self.selected_column, CELL_CLR_NORMAL)
         elif self.model_columns[self.selected_column] == 'Class (numerical)':
             string = 'Class (numerical)'
             self.available_to_model_entry. \
                 configure(readonlybackground=CELL_CLR_CLS_LBL)
-#            self.apply_column_color(self.selected_column, CELL_CLR_CLS_LBL)
         elif self.model_columns[self.selected_column] == 'Yes (numerical)':
             string = 'Yes (numerical)'
             self.available_to_model_entry. \
                 configure(readonlybackground=CELL_CLR_MODEL_NUMERICAL)
-#            self.apply_column_color(self.selected_column,
-#                                    CELL_CLR_MODEL_NUMERICAL)
         elif self.model_columns[self.selected_column] == 'Class (datetime)':
             string = 'Class (datetime)'
             self.available_to_model_entry. \
                 configure(readonlybackground=CELL_CLR_CLS_LBL)
-#            self.apply_column_color(self.selected_column,
-#                                    CELL_CLR_CLS_LBL)
         elif self.model_columns[self.selected_column] == 'Yes (datetime)':
             string = 'Yes (datetime)'
             self.available_to_model_entry. \
                 configure(readonlybackground=CELL_CLR_MODEL_DATETIME)
-#            self.apply_column_color(self.selected_column,
-#                                    CELL_CLR_MODEL_DATETIME)
         elif self.model_columns[self.selected_column] == 'Class (boolean)':
             string = 'Class (boolean)'
             self.available_to_model_entry. \
                 configure(readonlybackground=CELL_CLR_CLS_LBL)
-#            self.apply_column_color(self.selected_column,
-#                                    CELL_CLR_CLS_LBL)
         elif self.model_columns[self.selected_column] == 'Yes (boolean)':
             string = 'Yes (boolean)'
             self.available_to_model_entry. \
                 configure(readonlybackground=CELL_CLR_MODEL_BOOLEAN)
-#            self.apply_column_color(self.selected_column,
-#                                    CELL_CLR_MODEL_BOOLEAN)
         elif self.model_columns[self.selected_column] == 'Class (nominal)':
             string = 'Class (nominal)'
             self.available_to_model_entry. \
                 configure(readonlybackground=CELL_CLR_CLS_LBL)
-#            self.apply_column_color(self.selected_column,
-#                                    CELL_CLR_CLS_LBL)
         elif self.model_columns[self.selected_column] == 'Yes (nominal)':
             string = 'Yes (nominal)'
             self.available_to_model_entry. \
                 configure(readonlybackground=CELL_CLR_MODEL_NOMINAL)
-#            self.apply_column_color(self.selected_column,
-#                                    CELL_CLR_MODEL_NOMINAL)
         elif self.model_columns[self.selected_column] == 'Yes (ordinal)':
             string = 'Yes (ordinal)'
             self.available_to_model_entry. \
                 configure(readonlybackground=CELL_CLR_MODEL_ORDINAL)
-#            self.apply_column_color(self.selected_column,
-#                                    CELL_CLR_MODEL_ORDINAL)
-
-      #  self.available_to_model_final[self.selected_column] = string
-#        self.update_model_option_available_to_model_final(self.available_to_model_final)
 
         self.update_disabled_widget(self.available_to_model_entry, string)
         self.update_column_tab_dict(self.available_to_model_entry, string)
@@ -2288,7 +2183,6 @@ class Warchest():
     def update_bytes_in_col_index_entry(self):
 
         string = str(self.get_col_values().index.nbytes)
-        # print(col_values.columns.nbytes)
         self.update_disabled_widget(self.bytes_in_col_index_entry, string)
         self.update_column_tab_dict(self.bytes_in_col_index_entry, string)
 
@@ -2520,19 +2414,15 @@ class Warchest():
     # General Information --------------------------------
     def update_number_of_columns_entry(self):
 
-        # self.get_updated_pandastable_df()
         string = len(self.table.model.df.columns)
         self.update_disabled_widget(self.number_of_columns_entry, string)
 
     def update_number_of_rows_entry(self):
 
-        # self.get_updated_pandastable_df()
         string = len(self.table.model.df.index)
         self.update_disabled_widget(self.number_of_rows_entry, string)
 
     def update_missing_values_in_df_entry(self):
-
-        # self.get_updated_pandastable_df()
 
         if len(self.table.model.df.index) == 0:
             string = "N/A"
@@ -2668,7 +2558,6 @@ class Warchest():
     def get_selected_dataset(self):
 
         qry = 'SELECT SelectedDataset FROM Datasets'
-        # cursor = self.execute_db_query(qry)
         cursor = exec_qry(qry)
 
         for row in cursor:
@@ -2686,8 +2575,6 @@ class Warchest():
         self.clean_top_area_items()
 
         # Load iris Dataset
-        #self.loaded_df = load_dataset('iris')
-
         self.selected_dataset = self.get_selected_dataset()
         if self.selected_dataset == '':
             messagebox.showwarning("Warning", "No dataset selected.")
@@ -2696,21 +2583,17 @@ class Warchest():
             self.loaded_df = self.load_dataset(self.selected_dataset)
 
         # Load eda Dataset
-        #self.loaded_df = load_dataset('eda')
-
         self.table = pt = Table(self.dataframe_area,
                                 dataframe=self.loaded_df,
                                 callback=self.update_from_pandastable,
                                 showtoolbar=True,
                                 showstatusbar=True,
                                 absolute_path=self.absolute_path)
-        #pt.importCSV('iris.csv') # ./datasets/iris.csv'
         pt.show()
 
         session = Session()
         self.session_id = session.add_session(self.selected_dataset)
 
-        # self.get_updated_pandastable_df()
         self.selected_column = pt.currentcol
         self.selected_column_name = pt.currentcol_name
 
@@ -2721,10 +2604,9 @@ class Warchest():
 
         self.create_top_area_items()
 
-#        self.check_db_in_thread()
-
         self.update_column_tab_widgets()
-        #pt.redraw()
+
+        self.init_model_overrides()
 
     def update_from_pandastable(self, selected_column, selected_column_name,
                                 option):
@@ -2819,72 +2701,27 @@ class Warchest():
         else:
             try:
                 return "unknown"
-                print(col_values.dtype.name)
-                print(np.dtype(col_values))
             except:
                 pass
-                # column_type = "unknown"
-
-#        if column_type == "category":
-#            return "categorical/factor"
-#        if column_type == "boolean":
-#            return "boolean"
-#        if column_type == "string":
-#            return "nominal or ordinal"
-#        if column_type == "float" or column_type == "int":
-#            return "numerical"
-#        if column_type == "complex":
-#            return "complex (numerical)"
-#        if column_type == "datetime":
-#            return "datetime"
-#        if column_type == "unknown":
-#            return "unknown"
-
-        #dtype.kind
-        #b 	boolean
-        #i 	signed integer
-        #u 	unsigned integer
-        #f 	floating-point
-        #c 	complex floating-point
-        #m 	timedelta
-        #M 	datetime
-        #O 	object
-        #S 	(byte-)string
-        #U 	Unicode
-        #V 	void
-        #
-        #is_string_dtype
-        #dtype.kind in ('O', 'S', 'U') and not is_period_dtype(dtype)
-
-#    def get_updated_pandastable_df(self):
-#
-#        # get df from the pandastable model
-#        self.pandastable_df = self.table.model.df
 
     def get_values_from_selected_column(self):
 
-        # return self.pandastable_df.iloc[:, self.selected_column]
         return self.table.model.df.iloc[:, self.selected_column]
 
     def get_values_from_any_column(self, index):
 
-        # return self.pandastable_df.iloc[:, index]
         return self.table.model.df.iloc[:, index]
 
     def get_col_values(self):
 
-        # self.get_updated_pandastable_df()
         return self.get_values_from_selected_column()
 
     def get_col_values_by_col(self, index):
 
-        # self.get_updated_pandastable_df()
         return self.get_values_from_any_column(index)
 
     def get_col_name_by_index(self, index):
 
-        # self.get_updated_pandastable_df()
-        # return self.pandastable_df.columns[index]
         return self.table.model.df.columns[index]
 
     def add_tooltip_to_widget(self, widget):
@@ -2895,75 +2732,6 @@ class Warchest():
                                              language=g.localized_lang):
             tooltip_text = row[0]
         self.tooltip.bind(widget, tooltip_text)
-
-#    def execute_db_query(self, query, parameters=()):
-#        with sqlite3.connect(self.db_filename) as conn:
-#            cursor = conn.cursor()
-#            query_result = cursor.execute(query, parameters)
-#            conn.commit()
-#        return query_result
-
-#    def read_integer_from_db(self, table_name=None, item_name=None):
-#
-#        if table_name == 'TopAreaItems':
-#            where_column1 = 'ItemName'
-#            sel_column_1 = 'IntegerContent'
-#
-##        query = "SELECT ({coi}) FROM {tn} WHERE {cn}={my_id}".\
-##                format(coi=column_3, tn=table_name, cn=column_2, my_id=item_name)
-#        query = "SELECT {col} FROM {tbl} WHERE {cond}=?".\
-#                format(col=sel_column_1,
-#                       tbl=table_name,
-#                       cond=where_column1)
-#        parameters = (item_name,)
-#
-#        return self.execute_db_query(query, parameters)
-
-#    def read_text_from_db(self, table_name=None, item_name=None):
-#
-#        if table_name == 'TopAreaItems':
-#            where_column1 = 'ItemName'
-#            sel_column_1 = 'TextContent'
-#
-#        query = "SELECT {col} FROM {tbl} WHERE {cond}=?".\
-#                format(col=sel_column_1,
-#                       tbl=table_name,
-#                       cond=where_column1)
-#        parameters = (item_name,)
-#
-#        return self.execute_db_query(query, parameters)
-
-#    def write_integer_to_db(self, table_name=None,
-#                            item_name=None,
-#                            item_value=None):
-#
-#        if table_name == 'TopAreaItems':
-#            where_column1 = 'ItemName'
-#            update_column_1 = 'IntegerContent'
-#
-#        query = "UPDATE {tbl} SET {col}=? WHERE {cond}=?".\
-#                format(col=update_column_1,
-#                       tbl=table_name,
-#                       cond=where_column1)
-#        parameters = (item_value, item_name)
-#
-#        return self.execute_db_query(query, parameters)
-
-#    def write_text_to_db(self, table_name=None,
-#                         item_name=None,
-#                         item_value=None):
-#
-#        if table_name == 'TopAreaItems':
-#            where_column1 = 'ItemName'
-#            update_column_1 = 'TextContent'
-#
-#        query = "UPDATE {tbl} SET {col}=? WHERE {cond}=?".\
-#                format(col=update_column_1,
-#                       tbl=table_name,
-#                       cond=where_column1)
-#        parameters = (item_value, item_name)
-#
-#        return self.execute_db_query(query, parameters)
 
     def read_tooltip_from_db(self, table_name=None, item_name=None, language=1):
 
@@ -2978,7 +2746,6 @@ class Warchest():
                        lang=lang_column1)
         parameters = (item_name, language)
 
-        # return self.execute_db_query(query, parameters)
         return exec_qry(qry, parameters)
 
     def set_x_and_y_old(self):
@@ -2990,7 +2757,6 @@ class Warchest():
         self.x = self.loaded_df.iloc[:, [2, 3]].values
         print(type(self.x))
         print(self.x)
-        #print(type(self.loaded_df))
 
     def set_model_classlabel(self):
 
@@ -3010,12 +2776,13 @@ class Warchest():
 
     def on_model_dataset_menu_clicked(self):
 
-        if not hasattr(self, 'table'):
-            messagebox.showwarning("Warning", "No dataset selected.")
+        if self.dataset_does_not_exist():
             return
 
         self.set_model_classlabel()
         self.set_model_predictors()
+
+        Model(self.root, self.x, self.y)
 
     def on_run_dataset_menu_old_clicked(self):
 
@@ -3162,6 +2929,9 @@ class Warchest():
 
     def on_toggle_selected_transformations_menu_clicked(self):
 
+        if self.dataset_does_not_exist():
+            return
+
         try:
             self.transformations_log_tree. \
                 item(self.transformations_log_tree.selection())['values'][0]
@@ -3172,6 +2942,9 @@ class Warchest():
         self.toggle_selected_transformation()
 
     def on_flag_all_transformations_menu_clicked(self):
+
+        if self.dataset_does_not_exist():
+            return
 
         self.tabs.select(3)
         self.update_transformations_log_tab_widgets()
@@ -3184,6 +2957,9 @@ class Warchest():
 
     def on_unflag_all_transformations_menu_clicked(self):
 
+        if self.dataset_does_not_exist():
+            return
+
         self.tabs.select(3)
         self.update_transformations_log_tab_widgets()
 
@@ -3194,6 +2970,9 @@ class Warchest():
         self.unflag_all_transformations()
 
     def on_replicate_selected_transformations_menu_clicked(self):
+
+        if self.dataset_does_not_exist():
+            return
 
         try:
             self.transformations_log_tree. \
@@ -3206,6 +2985,9 @@ class Warchest():
 
     def on_replicate_all_transformations_menu_clicked(self):
 
+        if self.dataset_does_not_exist():
+            return
+
         self.tabs.select(3)
         self.update_transformations_log_tab_widgets()
 
@@ -3216,6 +2998,9 @@ class Warchest():
         self.replicate_all_transformations()
 
     def on_load_transformations_menu_clicked(self):
+
+        if self.dataset_does_not_exist():
+            return
 
         self.tabs.select(3)
         self.update_transformations_log_tab_widgets()
@@ -3229,6 +3014,9 @@ class Warchest():
 
     def on_save_transformations_menu_clicked(self):
 
+        if self.dataset_does_not_exist():
+            return
+
         self.tabs.select(3)
         self.update_transformations_log_tab_widgets()
 
@@ -3239,6 +3027,9 @@ class Warchest():
         self.save_transformations()
 
     def on_clear_all_transformations_menu_clicked(self):
+
+        if self.dataset_does_not_exist():
+            return
 
         self.tabs.select(3)
         self.update_transformations_log_tab_widgets()
@@ -3252,6 +3043,9 @@ class Warchest():
 
     def on_load_model_columns_menu_clicked(self):
 
+        if self.dataset_does_not_exist():
+            return
+
         if (self.has_model_classlabel() or
                 len(self.get_predictors_from_model_columns()) != 0):
             if messagebox.askokcancel("Warning", "Current model columns selection will be deleted. Do you want to proceed?"):
@@ -3262,6 +3056,9 @@ class Warchest():
 
     def on_save_model_columns_menu_clicked(self):
 
+        if self.dataset_does_not_exist():
+            return
+
         if (self.has_model_classlabel() == False and
                 len(self.get_predictors_from_model_columns()) == 0):
             messagebox.showwarning("Warning", "No model columns selection available.")
@@ -3271,11 +3068,37 @@ class Warchest():
 
     def on_ordinal_mappings_menu_clicked(self):
 
+        if self.dataset_does_not_exist():
+            return
+
         self.update_column_tab_widgets()  # update for selected column
 
         OrdinalMapping(self.root,
                        self.get_col_values(),
                        self.get_feature_type(self.get_col_values()))
+
+    def on_classifiers_menu_clicked(self):
+
+        ClassifiersCRUD(self.root)
+
+    def on_default_classifiers_menu_clicked(self):
+
+        ClassifiersModelDefaults(self.root)
+
+    def on_default_train_and_test_split_menu_clicked(self):
+
+        TrainAndTestSplitDefaults(self.root)
+
+    def on_default_scaling_menu_clicked(self):
+
+        ScalingDefaults(self.root)
+
+    def dataset_does_not_exist(self):
+
+        if not hasattr(self, 'table'):
+            messagebox.showwarning("Warning", "No dataset selected.")
+            return True
+        return False
 
     def turn_progressbar_on(self, progressbar, progressbar_label):
 
@@ -3327,17 +3150,6 @@ class Warchest():
 
         label_text = getattr(self, widget_label).cget("text")
         self.column_tab_dict[widget_name] = [value, label_text]
-        # self.column_tab_tuples_list.append(tuple([widget_name, value]))
-
-#    def reset_db_fields(self):
-#
-#        # reset selected_column
-#        self.write_integer_to_db(table_name='TopAreaItems',
-#                                 item_name='selected_column',
-#                                 item_value=0)
-#        self.write_text_to_db(table_name='TopAreaItems',
-#                              item_name='selected_column_name',
-#                              item_value='')
 
     def handle_transformations_log_double_click(self, event):
 
@@ -3528,19 +3340,34 @@ class Warchest():
         file_obj = open(file_name, "rb")
 
         try:
+            temp1, temp2, temp3, temp4 = pickle.load(file_obj)
+            if len(temp1) != len(self.table.model.df.columns):
+                messagebox.showerror("Error",
+                                     "Number of columns in Warchest Model Columns File and current dataset do not match")
+                file_obj.close()
+                return
+            else:
+                file_obj.close()
+        except EOFError:
+            messagebox.showerror("Error",
+                                 "Warchest Model Columns File corrupted")
+            file_obj.close()
+            return
+
+        file_obj = open(file_name, "rb")
+        try:
             self.available_to_model, self.class_label_status, self.nominal_ordinal, self.model_columns = pickle.load(file_obj)
             print(self.model_columns)
             print(type(self.model_columns))
+            self.update_model_option_available_to_model(self.available_to_model)
+            self.update_model_option_class_label_status(self.class_label_status)
+            self.update_model_option_nominal_ordinal(self.nominal_ordinal)
+            self.update_model_option_model_columns(self.model_columns)
+            self.update_column_tab_widgets()
         except EOFError:
             messagebox.showerror("Error",
                                  "Warchest Model Columns File corrupted")
         file_obj.close()
-
-        self.update_model_option_available_to_model(self.available_to_model)
-        self.update_model_option_class_label_status(self.class_label_status)
-        self.update_model_option_nominal_ordinal(self.nominal_ordinal)
-        self.update_model_option_model_columns(self.model_columns)
-        self.update_column_tab_widgets()
 
     def save_model_columns(self):
 
@@ -3598,12 +3425,6 @@ class Warchest():
             get_model_option_x('nominal_ordinal_dict')
         self.model_columns = self. \
             get_model_option_x('model_columns_dict')
-#        print('\navailable_to_model')
-#        print(self.available_to_model)
-#        print('class_label_status')
-#        print(self.class_label_status)
-#        print('nominal_ordinal')
-#        print(self.nominal_ordinal)
 
         for index, column in enumerate(self.table.model.df.columns):
 
@@ -3701,40 +3522,20 @@ class Warchest():
         self.table.columncolors[self.table.model.df.columns[index]] = clr
         self.table.redraw()
 
-#    def check_db_in_thread(self):
-#
-#        self.queue = Queue()
-#
-#        self.thread = Thread(target=self.describe_column)
-#        #threading.Timer(0.01,task).start()
-#
-#        self.queue.put(self.thread)
-#
-#        self.thread.start()
-
     def describe_column(self):
 
         self.update_column_tab_widgets()
-#        self.queue.get()
-#
-#        while True:
-#
-#            time.sleep(0.5)
-#
-#            for row in self.read_integer_from_db(table_name='TopAreaItems',
-#                                                 item_name='selected_column'):
-#                selected_column = row[0]
-#
-#            if self.selected_column != selected_column:
-#                self.update_column_tab_widgets()
-#
-#        self.queue.task_done()
+
+    def init_model_overrides(self):
+
+        model_task = ModelTask()
+        model_task.update_model_override_algorithms()
+        model_task.update_model_override_algorithm_params()
+        model_task.update_model_overrides()
 
     def exit_app(self):
-        # self.keep_playing = False
+
         if messagebox.askokcancel("Quit", "Really quit?"):
-            #self.thread.cancel()
-#            self.reset_db_fields()
             self.root.destroy()
 
     def show_about(self):
