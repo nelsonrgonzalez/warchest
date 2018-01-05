@@ -1,6 +1,51 @@
+"""
+    Warchest: Data management and automation GUI for Machine Learning projects
+    Created September 2017
+    Copyright (C) Nelson R Gonzalez
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+"""
+
 import sys
 import sqlite3
-# import numpy as np
+from sklearn.preprocessing import MinMaxScaler
+from sklearn.preprocessing import StandardScaler
+
+
+def scale(X_train, X_test, scaling="std"):
+    """ Bring features onto the same scale
+
+    scaling = "std":   center feature columns at mean 0 with
+                       standard deviation at 1 so the feature
+                       column take the form of a normal
+                       distribution. Good for outliers.
+    scaling = "norm":  rescales feature columns to a range
+                       between 0 and 1. Good when a bounded
+                       interval is needed.
+    """
+
+    # Standardization
+    if (scaling == "std"):
+        sc = StandardScaler()
+        return sc.fit_transform(X_train), sc.transform(X_test)
+
+    # Normalization
+    if (scaling == "norm"):
+        mms = MinMaxScaler()
+        return mms.fit_transform(X_train), mms.transform(X_test)
+    else:
+        print("Incorrect type parameter")
 
 
 def exec_qry(qry, parameters=()):
@@ -158,3 +203,7 @@ def is_castable(series, type_to_cast):
     else:
         return "Unknown type"
 
+
+def is_even(number):
+
+    return number % 2 == 0
