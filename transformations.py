@@ -1,3 +1,22 @@
+"""
+    Warchest: Data management and automation GUI for Machine Learning projects
+    Created September 2017
+    Copyright (C) Nelson R Gonzalez
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+"""
+
 from toolbox import exec_qry, exec_insert_qry
 from datetime import datetime
 import pandas as pd
@@ -9,8 +28,6 @@ class Transformation():
     def __init__(self):
 
         pass
-#        self.transformation = ''
-#        self.transformation_id = 0
 
     def _get_transformation_id(self, transformation):
 
@@ -21,16 +38,6 @@ class Transformation():
 
         for row in cursor:
             return row[0]
-
-#    def _get_transformation(self):
-#
-#        qry = 'SELECT TransformationDesc FROM Transformations WHERE TransformationID=?'
-#        parameters = (self.transformation_id,)
-#
-#        cursor = exec_qry(qry, parameters)
-#
-#        for row in cursor:
-#            return row[0]
 
     def get_transformations_by_session(self, session):
 
@@ -70,7 +77,6 @@ class Transformation():
                            transformation,
                            **kwargs):
 
-        #self.transformation = transformation
         transformation_id = self._get_transformation_id(transformation)
 
         self.qry_ins = "INSERT INTO TransformationsLog (" \
@@ -120,13 +126,6 @@ class Transformation():
                                    transformation_id,
                                    datetime.now(), desc, 'Yes',
                                    trx_type, new_col_flag, old_col)
-#dummies
-#bins
-#encode
-#ordinal
-
-
-
 
         return exec_insert_qry(self.qry_ins, self.parameters)
 
@@ -211,14 +210,3 @@ class Transformation():
             self.update_model_option_available_to_model(self.available_to_model)
             self.update_model_option_class_label_status(self.class_label_status)
             self.update_model_option_nominal_ordinal(self.nominal_ordinal)
-
-#{'TransformationLogID': 105, 'SessionID': 130, 'SessionDesc': 'iris.csv',
-# 'ColumnIndex': 0, 'ColumnName': '0', 'TransformationID': 1,
-# 'TransformationDesc': 'setColumnType',
-# 'DateCreated': '2017-11-15 22:03:53.821886',
-# 'TransformationLogDesc': 'Cast column (0), index (0) to (float16).',
-# 'IsReplicate': 'Yes', 'DType': 'float16'}
-
-#        for k, v in [(k, v) for x in lst for (k, v) in x.items()]:
-#            print(k, v)
-#        print([(k, v) for x in lst for (k, v) in x.items()])
