@@ -102,6 +102,7 @@ class Warchest():
                                  foreground='grey25')
 
     def set_app_size(self):
+
         width = 1371
         height = 756
         x_offset = (self.root.winfo_screenwidth()/2)-(width/2)
@@ -1771,9 +1772,7 @@ class Warchest():
         self.insights_tree = \
             ttk.Treeview(self.insights_tab,
                          height=10,
-                         #columns=5,
                          columns=('Column Name','Column Index','Insight','Priority','Created On'),
-                         #text="Describe Column",
                          selectmode = 'browse',
                          name="insights_tree")
         self.insights_tree.grid(row=0, column=0, sticky="nsew",
@@ -1804,9 +1803,7 @@ class Warchest():
         self.transformations_log_tree = \
             ttk.Treeview(self.transformations_log_tab,
                          height=10,
-                         #columns=5,
                          columns=('Transformation','Session Name','Created On','Session ID','Trans ID', 'Replicate'),
-                         #text="Describe Column",
                          selectmode = 'browse',
                          name="transformations_log_tree")
         self.transformations_log_tree.grid(row=0, column=0, sticky="nsew",
@@ -2701,8 +2698,11 @@ class Warchest():
         else:
             try:
                 return "unknown"
+                print(col_values.dtype.name)
+                print(np.dtype(col_values))
             except:
                 pass
+                # column_type = "unknown"
 
     def get_values_from_selected_column(self):
 
@@ -2768,9 +2768,9 @@ class Warchest():
         print(type(self.y))
         print(self.y)
 
-    def set_model_predictors(self):
+    def set_model_features(self):
 
-        self.x = self.table.model.df.iloc[:, self.get_predictors_from_model_columns()].values
+        self.x = self.table.model.df.iloc[:, self.get_features_from_model_columns()].values
         print(type(self.x))
         print(self.x)
 
@@ -2780,7 +2780,7 @@ class Warchest():
             return
 
         self.set_model_classlabel()
-        self.set_model_predictors()
+        self.set_model_features()
 
         Model(self.root, self.x, self.y)
 
@@ -3047,7 +3047,7 @@ class Warchest():
             return
 
         if (self.has_model_classlabel() or
-                len(self.get_predictors_from_model_columns()) != 0):
+                len(self.get_features_from_model_columns()) != 0):
             if messagebox.askokcancel("Warning", "Current model columns selection will be deleted. Do you want to proceed?"):
                 self.load_model_columns()
         else:
@@ -3060,7 +3060,7 @@ class Warchest():
             return
 
         if (self.has_model_classlabel() == False and
-                len(self.get_predictors_from_model_columns()) == 0):
+                len(self.get_features_from_model_columns()) == 0):
             messagebox.showwarning("Warning", "No model columns selection available.")
             return
 
@@ -3503,7 +3503,7 @@ class Warchest():
 
                 return str(k)
 
-    def get_predictors_from_model_columns(self):
+    def get_features_from_model_columns(self):
 
         lst = []
         for k, v in self.model_columns.items():
