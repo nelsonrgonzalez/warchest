@@ -108,7 +108,6 @@ class Dataset(tk.Toplevel):
         self.default_dataset_entry = \
             tk.Entry(self.select_area_frame,
                      text="",
-                     #readonlybackground='white',
                      relief='flat',
                      highlightbackground='black',
                      highlightthickness=1,
