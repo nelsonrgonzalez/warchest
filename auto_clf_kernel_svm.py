@@ -44,8 +44,6 @@ def AutoClfKernelSVM(X_train,
     accuracy = accuracy_score(y_test, y_pred)
     training_accuracy = ksvm.score(X_train, y_train)
     test_accuracy = ksvm.score(X_test, y_test)
-    # lr.intercept_
-    # lr.coef_
 
     print("\nResults: Kernel Support Vector Machines Classifier")
     print("-----------------------------------------")
