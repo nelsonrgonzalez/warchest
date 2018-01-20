@@ -43,8 +43,6 @@ def AutoClfLinearSVM(X_train,
     accuracy = accuracy_score(y_test, y_pred)
     training_accuracy = lsvm.score(X_train, y_train)
     test_accuracy = lsvm.score(X_test, y_test)
-    # lr.intercept_
-    # lr.coef_
 
     print("\nResults: Linear Support Vector Machines Classifier")
     print("-----------------------------------------")
