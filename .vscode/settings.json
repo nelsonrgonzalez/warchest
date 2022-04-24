@@ -1,5 +1,5 @@
 {
-    "python.defaultInterpreterPath": "C:\\Users\\Nelson\\Anaconda3\\envs\\qiskit\\python.exe",
+    "python.defaultInterpreterPath": "C:\\Users\\Nelson\\Anaconda3\\python.exe",
     "python.linting.pylintEnabled": true,
     "python.linting.enabled": true,
     "python.linting.pylintPath": "pylint"
